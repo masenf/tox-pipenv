@@ -18,12 +18,14 @@ class MockEnvironmentConfig(object):
     sitepackages = False
     envdir = None
     pip_pre = False
+    envname = "mock"
 
 
 class MockSession(object):
     def __init__(self, tmpdir):
         self.config = MockConfig(tmpdir)
-        self.config.toxinidir = tmpdir
+        self.config.toxinidir = tmpdir / "tox-ini-dir"
+        self.config.toxinidir.ensure(dir=True)
 
     def make_emptydir(self, path):
         return True
@@ -34,7 +36,8 @@ class MockVenv(object):
         self.tmpdir = tmpdir
         self.session = MockSession(tmpdir)
         self.envconfig = MockEnvironmentConfig()
-        self.envconfig.envdir = tmpdir
+        self.envconfig.envdir = tmpdir / "dot-tox" / self.envconfig.envname
+        self.envconfig.envdir.ensure(dir=True)
         self.deps = []
 
     @property
