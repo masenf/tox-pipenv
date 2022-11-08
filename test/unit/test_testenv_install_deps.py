@@ -11,7 +11,7 @@ def test_install_no_deps(venv, mocker, actioncls):
     """
     action = actioncls(venv)
     venv.deps = []
-    mocker.patch.object(os, "environ", autospec=True)
+    mocker.patch.dict("os.environ")
     mocker.patch("subprocess.Popen")
     result = tox_testenv_install_deps(venv, action)
     assert result == True
@@ -37,7 +37,7 @@ def test_install_special_deps(venv, mocker, actioncls):
     action = actioncls(venv)
 
     venv.deps = ["foo-package", "foo-two-package"]
-    mocker.patch.object(os, "environ", autospec=True)
+    mocker.patch.dict("os.environ")
     mocker.patch("subprocess.Popen")
     result = tox_testenv_install_deps(venv, action)
     assert result == True
@@ -66,7 +66,7 @@ def test_install_pip_pre_deps(venv, mocker, actioncls):
     action = actioncls(venv)
 
     venv.deps = ["foo-package", "foo-two-package"]
-    mocker.patch.object(os, "environ", autospec=True)
+    mocker.patch.dict("os.environ")
     mocker.patch.object(action.venv.envconfig, 'pip_pre', True)
     mocker.patch("subprocess.Popen")
     result = tox_testenv_install_deps(venv, action)
