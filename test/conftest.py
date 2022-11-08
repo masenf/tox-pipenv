@@ -3,8 +3,6 @@ import py
 import subprocess
 import os
 
-from _pytest.tmpdir import tmpdir
-
 
 class MockConfig(object):
     def __init__(self, tmpdir):
