@@ -62,9 +62,10 @@ class MockVenv(object):
 class MockAction(object):
     def __init__(self, venv=None):
         self.venv = venv
+        self.activities = []
 
     def setactivity(self, *args, **kwargs):
-        pass
+        self.activities.append(args)
 
     def popen(self, *args, **kwargs):
         return subprocess.Popen(*args, **kwargs)
