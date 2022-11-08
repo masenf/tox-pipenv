@@ -92,7 +92,7 @@ def tox_testenv_install_deps(venv, action):
     with wrap_pipenv_environment(venv, pipfile_path):
         if deps:
             if "sync" in args:
-                action.setactivity("installdeps", "<sync to Pipfile.lock>")
+                action.setactivity("installdeps", "<sync to {}>".format(pipfile_lock_path))
             else:
                 action.setactivity("installdeps", "%s" % ",".join(list(map(str, deps))))
                 args += list(map(str, deps))

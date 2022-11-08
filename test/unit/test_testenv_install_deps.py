@@ -129,7 +129,12 @@ def test_install_sync(venv, mocker, actioncls, lock_file_name, deps):
     if not deps:
         assert action.activities == [("installdeps", "[]")]
     else:
-        assert action.activities == [("installdeps", "<sync to Pipfile.lock>")]
+        assert action.activities == [
+            (
+                "installdeps",
+                "<sync to {}>".format(venv.envconfig.envdir / "Pipfile.lock"),
+            )
+        ]
 
 
 @pytest.mark.parametrize(
