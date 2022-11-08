@@ -24,6 +24,9 @@ def _init_pipenv_environ():
     # don't use pew
     os.environ["PIPENV_VENV_IN_PROJECT"] = "1"
 
+    # don't print the warning about using an existing venv
+    os.environ["PIPENV_VERBOSITY"] = "-1"
+
 
 def _clone_pipfile(venv):
     if hasattr(venv, 'session'):
