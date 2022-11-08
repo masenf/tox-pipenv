@@ -26,7 +26,6 @@ def test_install_no_deps(venv, mocker, actioncls):
         ],
         action=action,
         cwd=venv.path.dirpath(),
-        venv=False,
     )
 
 
@@ -54,7 +53,6 @@ def test_install_special_deps(venv, mocker, actioncls):
         ],
         action=action,
         cwd=venv.path.dirpath(),
-        venv=False,
     )
 
 
@@ -85,7 +83,6 @@ def test_install_pip_pre_deps(venv, mocker, actioncls):
         ],
         action=action,
         cwd=venv.path.dirpath(),
-        venv=False,
     )
 
 
@@ -124,10 +121,10 @@ def test_install_sync(venv, mocker, actioncls, lock_file_name, deps):
             "-m",
             "pipenv",
             "sync",
+            "--dev",
         ],
         action=action,
         cwd=venv.path.dirpath(),
-        venv=False,
     )
     if not deps:
         assert action.activities == [("installdeps", "[]")]
@@ -179,5 +176,4 @@ def test_install_args_override(venv, mocker, actioncls, lock_file_name, deps):
         exp_command,
         action=action,
         cwd=venv.path.dirpath(),
-        venv=False,
     )
