@@ -1,3 +1,4 @@
+import shlex
 import sys
 import os
 import tox
@@ -5,6 +6,15 @@ from tox import hookimpl
 from tox import reporter
 from tox.venv import cleanup_for_venv
 import contextlib
+
+
+ENV_PIPENV_INSTALL_ARGS = "TOX_PIPENV_INSTALL_ARGS"
+
+
+def _env_install_args():
+    args_str = os.environ.get(ENV_PIPENV_INSTALL_ARGS)
+    if args_str:
+        return list(shlex.split(args_str))
 
 
 def _init_pipenv_environ():
@@ -106,7 +116,7 @@ def tox_testenv_install_deps(venv, action):
     basepath.ensure(dir=1)
     pipfile_path, pipfile_lock_path = _clone_pipfile(venv)
 
-    install_args = None
+    install_args = _env_install_args()
     if install_args is None:
         if pipfile_lock_path is not None:
             # project provided a lock file, so sync deps

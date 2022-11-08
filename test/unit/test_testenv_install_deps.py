@@ -133,3 +133,51 @@ def test_install_sync(venv, mocker, actioncls, lock_file_name, deps):
         assert action.activities == [("installdeps", "[]")]
     else:
         assert action.activities == [("installdeps", "<sync to Pipfile.lock>")]
+
+
+@pytest.mark.parametrize(
+    "lock_file_name",
+    (
+        None,
+        "Pipfile.lock",
+        "Pipfile.lock.mock",
+    )
+)
+@pytest.mark.parametrize(
+    "deps",
+    (
+        [],
+        ["foo-package", "foo-two-package"],
+    ),
+)
+def test_install_args_override(venv, mocker, actioncls, lock_file_name, deps):
+    """
+    Check that TOX_PIPENV_INSTALL_ARGS are respected regardless of lock file state.
+    """
+    if lock_file_name is not None:
+        (venv.session.config.toxinidir / lock_file_name).ensure()
+    action = actioncls(venv)
+
+    venv.deps = deps
+    mocker.patch.dict(
+        "os.environ",
+        {"TOX_PIPENV_INSTALL_ARGS": "install --deploy -v"},
+    )
+    mocker.patch("subprocess.Popen")
+    exp_command = [
+            sys.executable,
+            "-m",
+            "pipenv",
+            "install",
+            "--deploy",
+            "-v",
+    ] + deps
+    result = tox_testenv_install_deps(venv, action)
+    assert result == True
+    assert subprocess.Popen.call_count == 1
+    subprocess.Popen.assert_called_once_with(
+        exp_command,
+        action=action,
+        cwd=venv.path.dirpath(),
+        venv=False,
+    )
