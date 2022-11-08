@@ -87,3 +87,49 @@ def test_install_pip_pre_deps(venv, mocker, actioncls):
         cwd=venv.path.dirpath(),
         venv=False,
     )
+
+
+@pytest.mark.parametrize(
+    "lock_file_name",
+    (
+        "Pipfile.lock",
+        "Pipfile.lock.mock",
+    )
+)
+@pytest.mark.parametrize(
+    "deps",
+    (
+        [],
+        ["foo-package", "foo-two-package"],
+    ),
+)
+def test_install_sync(venv, mocker, actioncls, lock_file_name, deps):
+    """
+    `pipenv sync` is used when a Pipfile.lock is present.
+
+    When `pipenv sync` is used, do not pass a dependency list.
+    """
+    (venv.session.config.toxinidir / lock_file_name).ensure()
+    action = actioncls(venv)
+
+    venv.deps = deps
+    mocker.patch.dict("os.environ")
+    mocker.patch("subprocess.Popen")
+    result = tox_testenv_install_deps(venv, action)
+    assert result == True
+    assert subprocess.Popen.call_count == 1
+    subprocess.Popen.assert_called_once_with(
+        [
+            sys.executable,
+            "-m",
+            "pipenv",
+            "sync",
+        ],
+        action=action,
+        cwd=venv.path.dirpath(),
+        venv=False,
+    )
+    if not deps:
+        assert action.activities == [("installdeps", "[]")]
+    else:
+        assert action.activities == [("installdeps", "<sync to Pipfile.lock>")]

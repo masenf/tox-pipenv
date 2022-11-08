@@ -25,17 +25,27 @@ def _clone_pipfile(venv):
         root_pipfile_path = venv.session.config.toxinidir.join("Pipfile")
     else:
         root_pipfile_path = venv.envconfig.config.toxinidir.join("Pipfile")
+    # first try for an environment-specific lock file
+    root_pipfile_lock_path = root_pipfile_path + ".lock.{}".format(
+        venv.envconfig.envname,
+    )
+    if not root_pipfile_lock_path.exists():
+        root_pipfile_lock_path = root_pipfile_path + ".lock"
 
     # venv path may not have been created yet
     venv.path.ensure(dir=1)
 
     venv_pipfile_path = venv.path.join("Pipfile")
+    venv_pipfile_lock_path = None
     if not os.path.exists(str(root_pipfile_path)):
-        with open(str(root_pipfile_path), "a"):
-            os.utime(str(root_pipfile_path), None)
+        with open(str(venv_pipfile_path), "a"):
+            os.utime(str(venv_pipfile_path), None)
+    if root_pipfile_lock_path.exists():
+        venv_pipfile_lock_path = venv_pipfile_path + ".lock"
+        root_pipfile_lock_path.copy(venv_pipfile_lock_path)
     if not venv_pipfile_path.check():
         root_pipfile_path.copy(venv_pipfile_path)
-    return venv_pipfile_path
+    return venv_pipfile_path, venv_pipfile_lock_path
 
 
 @contextlib.contextmanager
@@ -74,7 +84,7 @@ def tox_testenv_create(venv, action):
 
     basepath = venv.path.dirpath()
     basepath.ensure(dir=1)
-    pipfile_path = _clone_pipfile(venv)
+    pipfile_path, pipfile_lock_path = _clone_pipfile(venv)
 
     with wrap_pipenv_environment(venv, pipfile_path):
         venv._pcall(args, venv=False, action=action, cwd=basepath)
@@ -94,14 +104,26 @@ def tox_testenv_install_deps(venv, action):
         deps = venv.get_resolved_dependencies()
     basepath = venv.path.dirpath()
     basepath.ensure(dir=1)
-    pipfile_path = _clone_pipfile(venv)
-    args = [sys.executable, "-m", "pipenv", "install", "--dev"]
+    pipfile_path, pipfile_lock_path = _clone_pipfile(venv)
+
+    install_args = None
+    if install_args is None:
+        if pipfile_lock_path is not None:
+            # project provided a lock file, so sync deps
+            install_args = ["sync"]
+        else:
+            install_args = ["install", "--dev"]
+
+    args = [sys.executable, "-m", "pipenv"] + install_args
     if venv.envconfig.pip_pre:
         args.append('--pre')
     with wrap_pipenv_environment(venv, pipfile_path):
         if deps:
-            action.setactivity("installdeps", "%s" % ",".join(list(map(str, deps))))
-            args += list(map(str, deps))
+            if "sync" in args:
+                action.setactivity("installdeps", "<sync to Pipfile.lock>")
+            else:
+                action.setactivity("installdeps", "%s" % ",".join(list(map(str, deps))))
+                args += list(map(str, deps))
         else:
             action.setactivity("installdeps", "[]")
         venv._pcall(args, venv=False, action=action, cwd=basepath)
@@ -113,7 +135,7 @@ def tox_testenv_install_deps(venv, action):
 @hookimpl
 def tox_runtest(venv, redirect):
     _init_pipenv_environ()
-    pipfile_path = _clone_pipfile(venv)
+    pipfile_path, pipfile_lock_path = _clone_pipfile(venv)
 
     action = venv.new_action("runtests")
 
@@ -171,7 +193,7 @@ def tox_runtest(venv, redirect):
 @hookimpl
 def tox_runenvreport(venv, action):
     _init_pipenv_environ()
-    pipfile_path = _clone_pipfile(venv)
+    pipfile_path, pipfile_lock_path = _clone_pipfile(venv)
 
     basepath = venv.path.dirpath()
     basepath.ensure(dir=1)
