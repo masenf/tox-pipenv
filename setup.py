@@ -8,10 +8,10 @@ sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 
 import tox_pipenv
 
-with open('README.rst') as readme:
+with open('README.md') as readme:
     long_description = readme.read()
 
-with open('HISTORY.rst') as history:
+with open('HISTORY.md') as history:
     history_txt = history.read()
 
 
@@ -28,7 +28,7 @@ def main():
         name='tox-pipenv',
         description='A pipenv plugin for tox',
         long_description=long_description + '\n\n' + history_txt,
-        long_description_content_type='text/x-rst',
+        long_description_content_type='text/x-markdown',
         version=_version,
         url='https://github.com/tox-dev/tox-pipenv',
         license='MIT',
