@@ -82,7 +82,7 @@ _string_. Environment Variable.
 
 Global override for `pipenv_install_cmd` will apply to all environments.
 
-## `pipenv_install_args`
+## `pipenv_install_opts`
 
 _argv_. Specified per `[testenv]` section.
 
@@ -91,11 +91,11 @@ Override the args passed to `pipenv` during the `install_deps` stage.
 By default, the plugin will use `--dev` to install all dependencies specified
 in the `Pipfile`.
 
-### `TOX_PIPENV_INSTALL_ARGS`
+### `TOX_PIPENV_INSTALL_OPTS`
 
 _string_. Environment Variable.
 
-Global override for `pipenv_install_args` will apply to all environments.
+Global override for `pipenv_install_opts` will apply to all environments.
 
 # Virtual Environments
 

@@ -4,28 +4,44 @@ Use `pipenv` to install or sync dependencies.
 Tox plugin overrides `install_deps` action to either install or sync
 dependencies from a `Pipfile` into the current test environment.
 """
+import contextlib
 import shlex
 import sys
 import os
+
+import py.path
 from tox import hookimpl
 from tox import reporter
-import contextlib
 
 
 DEFAULT_PIPENV_ENV = {
     "PIPENV_YES": "1",  # Answer yes on recreation of virtual env
     "PIPENV_VENV_IN_PROJECT": "1",  # don't use pew
     "PIPENV_VERBOSITY": "-1",  # suppress existing venv warning
+    "PIPENV_NOSPIN": "1",  # suppress terminal animations
 }
-PIPFILE = "Pipfile"
-PIPFILE_LOCK = PIPFILE + ".lock"
-PIPFILE_LOCK_ENV = PIPFILE_LOCK + ".{envname}"
+DEFAULT_PIPENV_INSTALL_OPTS = []
+ENV_PIPENV_INSTALL_OPTS = "TOX_PIPENV_INSTALL_OPTS"
 ENV_PIPENV_INSTALL_CMD = "TOX_PIPENV_INSTALL_CMD"
-ENV_PIPENV_INSTALL_ARGS = "TOX_PIPENV_INSTALL_ARGS"
-DEF_PIPENV_INSTALL_ARGS = ["--dev"]
+ENV_PIPENV_PIPFILE = "PIPENV_PIPFILE"
+PIPFILE_PARENT = PIPFILE = PIPFILE_LOCK = PIPFILE_LOCK_ENV = None
 
 
-def _pipfile_if_exists(venv, in_path=None, lock_file_fmt=PIPFILE_LOCK):
+def _init_global_pipfile_from_env_var():
+    global PIPFILE_PARENT, PIPFILE, PIPFILE_LOCK, PIPFILE_LOCK_ENV
+
+    pipenv_pipfile_str = os.environ.get(ENV_PIPENV_PIPFILE)
+    if pipenv_pipfile_str is not None:
+        pipenv_pipfile = py.path.local(pipenv_pipfile_str)
+        PIPFILE_PARENT = pipenv_pipfile.parts()[-2]
+        PIPFILE = pipenv_pipfile.basename
+    else:
+        PIPFILE = "Pipfile"
+    PIPFILE_LOCK = PIPFILE + ".lock"
+    PIPFILE_LOCK_ENV = PIPFILE_LOCK + ".{envname}"
+
+
+def _pipfile_if_exists(venv, in_path=None, lock_file_fmt=None):
     """
     Get Pipfile and Pipfile.lock paths for the given venv under in_path.
 
@@ -38,6 +54,8 @@ def _pipfile_if_exists(venv, in_path=None, lock_file_fmt=PIPFILE_LOCK):
     """
     if in_path is None:
         in_path = venv.path
+    if lock_file_fmt is None:
+        lock_file_fmt = PIPFILE_LOCK
     pipfile_path = in_path.join(PIPFILE)
     pipfile_lock_path = in_path.join(
         lock_file_fmt.format(envname=venv.envconfig.envname),
@@ -53,12 +71,15 @@ def _toxinidir_pipfile(venv):
     """
     Get Pipfile and Pipfile.lock.{envconfig} paths in the project directory.
 
+    If PIPENV_PIPFILE is set, look for the path's basename and derived lock
+    file in the parent directory.
+
     Return tuple of (pipfile_path, pipfile_lock_path).
     """
     config = getattr(venv, 'session', venv.envconfig).config
     return _pipfile_if_exists(
         venv,
-        in_path=config.toxinidir,
+        in_path=PIPFILE_PARENT or config.toxinidir,
         lock_file_fmt=PIPFILE_LOCK_ENV,
     )
 
@@ -179,17 +200,22 @@ def tox_addoption(parser):
         ),
     )
     parser.add_testenv_attribute(
-        "pipenv_install_args",
+        "pipenv_install_opts",
         type="string",
         default=None,
         help=(
-            "Override the args passed to the install command. "
+            "Override the opts passed to the install command. "
             "(default: {}) (var: {})".format(
-                DEF_PIPENV_INSTALL_ARGS,
-                ENV_PIPENV_INSTALL_ARGS,
+                DEFAULT_PIPENV_INSTALL_OPTS,
+                ENV_PIPENV_INSTALL_OPTS,
             )
         ),
     )
+
+
+@hookimpl
+def tox_configure(config):
+    _init_global_pipfile_from_env_var()
 
 
 def _should_skip(venv):
@@ -222,11 +248,11 @@ def _install_args(venv):
         pipfile_path = pipfile_lock_path.parts()[-2] / PIPFILE
         pipfile_path.ensure()
 
-    args_str = os.environ.get(ENV_PIPENV_INSTALL_ARGS, venv.envconfig.pipenv_install_args)
+    args_str = os.environ.get(ENV_PIPENV_INSTALL_OPTS, venv.envconfig.pipenv_install_opts)
     if args_str:
         args = list(shlex.split(args_str))
     else:
-        args = DEF_PIPENV_INSTALL_ARGS
+        args = DEFAULT_PIPENV_INSTALL_OPTS
     install_cmd = os.environ.get(ENV_PIPENV_INSTALL_CMD, venv.envconfig.pipenv_install_cmd)
     if install_cmd is None:
         if pipfile_lock_path is None:
@@ -244,12 +270,14 @@ def tox_testenv_install_deps(venv, action):
     if _should_skip(venv):
         return
     pipfile_path, pipfile_lock_path = _clone_pipfile(venv)
-    if venv.envconfig.config.option.pipenv_lock:
+    g_config = venv.envconfig.config
+    if g_config.option.pipenv_lock:
         # user requested explicit locking
         pipfile_path, pipfile_lock_path = _venv_pipenv_lock(venv, action)
-        # copy the lock file back to toxinidir to be committed
+        # copy the lock file back to project dir to be committed
+        project_dir = PIPFILE_PARENT or g_config.toxinidir
         pipfile_lock_path.copy(
-            venv.envconfig.config.toxinidir / PIPFILE_LOCK_ENV.format(
+            project_dir / PIPFILE_LOCK_ENV.format(
                 envname=venv.envconfig.envname,
             ),
         )

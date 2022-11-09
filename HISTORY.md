@@ -13,7 +13,7 @@
   * testenv ini-setting, `skip_pipenv`: opt-out of all `pipenv` operations for the environment
   * Customize `pipenv` `install_deps` command:
     * testenv ini-setting `pipenv_install_cmd` / `TOX_PIPENV_INSTALL_CMD`
-    * testenv ini-setting `pipenv_install_args` / `TOX_PIPENV_INSTALL_ARGS`
+    * testenv ini-setting `pipenv_install_opts` / `TOX_PIPENV_INSTALL_OPTS`
     * Overriding the install command is split between command and args
     * Environment variables take precedence over testenv ini-setting
   * Code restructuring for better modularity and readability
