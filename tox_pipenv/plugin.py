@@ -1,121 +1,279 @@
+"""
+Use `pipenv` to install or sync dependencies.
+
+Tox plugin overrides `install_deps` action to either install or sync
+dependencies from a `Pipfile` into the current test environment.
+"""
 import shlex
 import sys
 import os
-import tox
 from tox import hookimpl
 from tox import reporter
-from tox.venv import cleanup_for_venv
 import contextlib
 
 
+DEFAULT_PIPENV_ENV = {
+    "PIPENV_YES": "1",  # Answer yes on recreation of virtual env
+    "PIPENV_VENV_IN_PROJECT": "1",  # don't use pew
+    "PIPENV_VERBOSITY": "-1",  # suppress existing venv warning
+}
+PIPFILE = "Pipfile"
+PIPFILE_LOCK = PIPFILE + ".lock"
+PIPFILE_LOCK_ENV = PIPFILE_LOCK + ".{envname}"
+ENV_PIPENV_INSTALL_CMD = "TOX_PIPENV_INSTALL_CMD"
 ENV_PIPENV_INSTALL_ARGS = "TOX_PIPENV_INSTALL_ARGS"
+DEF_PIPENV_INSTALL_ARGS = ["--dev"]
 
 
-def _env_install_args():
-    args_str = os.environ.get(ENV_PIPENV_INSTALL_ARGS)
-    if args_str:
-        return list(shlex.split(args_str))
+def _pipfile_if_exists(venv, in_path=None, lock_file_fmt=PIPFILE_LOCK):
+    """
+    Get Pipfile and Pipfile.lock paths for the given venv under in_path.
+
+    If in_path is not given, default to `venv.path`.
+
+    Return tuple of (pipfile_path, pipfile_lock_path).
+
+    If either of these values are None, then the corresponding file did not
+    exist in in_path.
+    """
+    if in_path is None:
+        in_path = venv.path
+    pipfile_path = in_path.join(PIPFILE)
+    pipfile_lock_path = in_path.join(
+        lock_file_fmt.format(envname=venv.envconfig.envname),
+    )
+    if not pipfile_path.exists():
+        pipfile_path = None
+    if not pipfile_lock_path.exists():
+        pipfile_lock_path = None
+    return pipfile_path, pipfile_lock_path
 
 
-def _init_pipenv_environ():
-    # Answer yes on recreation of virtual env
-    os.environ["PIPENV_YES"] = "1"
+def _toxinidir_pipfile(venv):
+    """
+    Get Pipfile and Pipfile.lock.{envconfig} paths in the project directory.
 
-    # don't use pew
-    os.environ["PIPENV_VENV_IN_PROJECT"] = "1"
+    Return tuple of (pipfile_path, pipfile_lock_path).
+    """
+    config = getattr(venv, 'session', venv.envconfig).config
+    return _pipfile_if_exists(
+        venv,
+        in_path=config.toxinidir,
+        lock_file_fmt=PIPFILE_LOCK_ENV,
+    )
 
-    # don't print the warning about using an existing venv
-    os.environ["PIPENV_VERBOSITY"] = "-1"
+
+def _venv_pipfile(venv):
+    """
+    Get Pipfile and Pipfile.lock paths in the given venv.
+
+    Return tuple of (pipfile_path, pipfile_lock_path).
+    """
+    return _pipfile_if_exists(venv)
 
 
 def _clone_pipfile(venv):
-    if hasattr(venv, 'session'):
-        root_pipfile_path = venv.session.config.toxinidir.join("Pipfile")
-    else:
-        root_pipfile_path = venv.envconfig.config.toxinidir.join("Pipfile")
-    # first try for an environment-specific lock file
-    root_pipfile_lock_path = root_pipfile_path + ".lock.{}".format(
-        venv.envconfig.envname,
-    )
-    if not root_pipfile_lock_path.exists():
-        root_pipfile_lock_path = root_pipfile_path + ".lock"
+    """
+    Copy project Pipfile and env-specific Pipfile.lock into venv.
+
+    This function is called during tox_testenv_install_deps to create an
+    isolated copy of the Pipfile and lock file, in case any commands modify it
+    in the course of environment creation.
+
+    Return tuple of (pipfile_path, pipfile_lock_path).
+
+    If either of these values are None, then the corresponding file did not
+    exist in toxinidir.
+    """
+    root_pipfile_path, root_pipfile_lock_path = _toxinidir_pipfile(venv)
 
     # venv path may not have been created yet
-    venv.path.ensure(dir=1)
+    venv.path.ensure(dir=True)
 
-    venv_pipfile_path = venv.path.join("Pipfile")
-    venv_pipfile_lock_path = None
-    if not os.path.exists(str(root_pipfile_path)):
-        with open(str(venv_pipfile_path), "a"):
-            os.utime(str(venv_pipfile_path), None)
-    if root_pipfile_lock_path.exists():
-        venv_pipfile_lock_path = venv_pipfile_path + ".lock"
-        root_pipfile_lock_path.copy(venv_pipfile_lock_path)
-    if not venv_pipfile_path.check():
+    venv_pipfile_path = None
+    if root_pipfile_path is not None:
+        venv_pipfile_path = venv.path.join(PIPFILE)
         root_pipfile_path.copy(venv_pipfile_path)
+    venv_pipfile_lock_path = None
+    if root_pipfile_lock_path is not None:
+        venv_pipfile_lock_path = venv.path.join(PIPFILE_LOCK)
+        root_pipfile_lock_path.copy(venv_pipfile_lock_path)
     return venv_pipfile_path, venv_pipfile_lock_path
 
 
-@contextlib.contextmanager
-def wrap_pipenv_environment(venv, pipfile_path):
-    old_pipfile = os.environ.get("PIPENV_PIPFILE", None)
-    os.environ["PIPENV_PIPFILE"] = str(pipfile_path)
-    yield
-    if old_pipfile:
-        os.environ["PIPENV_PIPFILE"] = old_pipfile
+def _basepath(venv):
+    """Get basepath for the venv and ensure it exists."""
+    basepath = venv.path.dirpath()
+    basepath.ensure(dir=True)
+    return basepath
+
+
+def _pipenv_env(venv, pipfile_path=None):
+    """Return environment variables for running `pipenv`."""
+    if pipfile_path is None:
+        pipfile_path, _ = _venv_pipfile(venv)
+    env = DEFAULT_PIPENV_ENV.copy()
+    env.update(os.environ)
+    env["VIRTUAL_ENV"] = str(venv.path)
+    env["PIPENV_PIPFILE"] = str(pipfile_path)
+    return env
+
+
+def _pipenv_command(venv, args, action, **kwargs):
+    """
+    Execute `pipenv` in the given venv.
+
+    Additional kwargs are passed to venv._pcall.
+
+    If kwarg "env" is specified, it will be combined with and override the
+    os.environ and default _pipenv_env values.
+    """
+    env = _pipenv_env(venv)
+    kwarg_env = kwargs.pop("env", {})
+    env.update(kwarg_env)
+    return venv._pcall(
+        [sys.executable, "-m", "pipenv"] + list(args),
+        cwd=kwargs.pop("cwd", _basepath(venv)),
+        action=action,
+        env=env,
+    )
+
+
+def _venv_pipenv_lock(venv, action):
+    """Perform an explicit `pipenv lock` operation in the venv."""
+    pipfile_path, _ = _venv_pipfile(venv)
+    action.setactivity(
+        "pipenvlock",
+        "<{}>".format(pipfile_path),
+    )
+    _pipenv_command(venv, args=["lock"], action=action)
+    return _venv_pipfile(venv)
+
+
+@hookimpl
+def tox_addoption(parser):
+    parser.add_argument(
+        "--pipenv-lock",
+        action="store_true",
+        default=False,
+        help="Explicitly run `pipenv lock` to create or update a Pipfile.lock",
+    )
+    parser.add_testenv_attribute(
+        "skip_pipenv",
+        type="bool",
+        default=False,
+        help=(
+            "If true, this plugin will not take any pipenv-related actions for "
+            "the given environment. Useful for performing `pipenv` commands "
+            "directly or specifying an environment without `deps` in a project "
+            "that uses Pipfile."
+        ),
+    )
+    parser.add_testenv_attribute(
+        "pipenv_install_cmd",
+        type="string",
+        default=None,
+        help=(
+            "Override the `install` or `sync` command executed during installdeps. "
+            "(var {})".format(ENV_PIPENV_INSTALL_CMD)
+        ),
+    )
+    parser.add_testenv_attribute(
+        "pipenv_install_args",
+        type="string",
+        default=None,
+        help=(
+            "Override the args passed to the install command. "
+            "(default: {}) (var: {})".format(
+                DEF_PIPENV_INSTALL_ARGS,
+                ENV_PIPENV_INSTALL_ARGS,
+            )
+        ),
+    )
+
+
+def _should_skip(venv):
+    """Return True if this plugin should NOT proceed."""
+    if venv.envconfig.skip_pipenv:
+        return True
+    pipfile_path, pipfile_lock_path = _toxinidir_pipfile(venv)
+    if pipfile_path is None and pipfile_lock_path is None:
+        # this plugin only operates when Pipfile is present
+        return True
+    try:
+        deps = venv.get_resolved_dependencies()
+    except AttributeError:
+        # _getresolvedeps was deprecated on tox 3.7.0 in favor of get_resolved_dependencies
+        deps = venv._getresolvedeps()
+    if deps:
+        # this plugin only operates in the absense of testenv deps
+        return True
+
+
+def _install_args(venv):
+    """
+    Get the args passed `pipenv` for install_deps.
+
+    If no user suppled args are available, return None.
+    """
+    pipfile_path, pipfile_lock_path = _venv_pipfile(venv)
+    if pipfile_path is None:
+        # we need an actual Pipfile, even if its empty
+        pipfile_path = pipfile_lock_path.parts()[-2] / PIPFILE
+        pipfile_path.ensure()
+
+    args_str = os.environ.get(ENV_PIPENV_INSTALL_ARGS, venv.envconfig.pipenv_install_args)
+    if args_str:
+        args = list(shlex.split(args_str))
+    else:
+        args = DEF_PIPENV_INSTALL_ARGS
+    install_cmd = os.environ.get(ENV_PIPENV_INSTALL_CMD, venv.envconfig.pipenv_install_cmd)
+    if install_cmd is None:
+        if pipfile_lock_path is None:
+            install_cmd = "install"
+            if venv.envconfig.pip_pre:
+                args.append('--pre')
+        else:
+            # the project provides a lockfile for this environment, so sync to it
+            install_cmd = "sync"
+    return [install_cmd] + args
 
 
 @hookimpl
 def tox_testenv_install_deps(venv, action):
-    _init_pipenv_environ()
-    # TODO: If skip_install set, check existence of venv Pipfile
-    try:
-        deps = venv._getresolvedeps()
-    except AttributeError:
-        # _getresolvedeps was deprecated on tox 3.7.0 in favor of get_resolved_dependencies
-        deps = venv.get_resolved_dependencies()
-    basepath = venv.path.dirpath()
-    basepath.ensure(dir=1)
+    if _should_skip(venv):
+        return
     pipfile_path, pipfile_lock_path = _clone_pipfile(venv)
-
-    install_args = _env_install_args()
-    if install_args is None:
-        if pipfile_lock_path is not None:
-            # project provided a lock file, so sync deps
-            install_args = ["sync", "--dev"]
-        else:
-            install_args = ["install", "--dev"]
-
-    args = [sys.executable, "-m", "pipenv"] + install_args
-    if venv.envconfig.pip_pre:
-        args.append('--pre')
-    with wrap_pipenv_environment(venv, pipfile_path):
-        if deps:
-            if "sync" in args:
-                action.setactivity("installdeps", "<sync to {}>".format(pipfile_lock_path))
-            else:
-                action.setactivity("installdeps", "%s" % ",".join(list(map(str, deps))))
-                args += list(map(str, deps))
-        else:
-            action.setactivity("installdeps", "[]")
-        venv._pcall(args, action=action, cwd=basepath)
-
-    # Return non-None to indicate the plugin has completed
+    if venv.envconfig.config.option.pipenv_lock:
+        # user requested explicit locking
+        pipfile_path, pipfile_lock_path = _venv_pipenv_lock(venv, action)
+        # copy the lock file back to toxinidir to be committed
+        pipfile_lock_path.copy(
+            venv.envconfig.config.toxinidir / PIPFILE_LOCK_ENV.format(
+                envname=venv.envconfig.envname,
+            ),
+        )
+    install_args = _install_args(venv)
+    action.setactivity(
+        "pipenv",
+        "<{} {}>".format(
+            install_args,
+            pipfile_lock_path if "sync" in install_args else pipfile_path,
+        ),
+    )
+    _pipenv_command(
+        venv,
+        args=install_args,
+        action=action,
+    )
+    # Return True to stop further plugins from installing deps
     return True
 
 
 @hookimpl
 def tox_runenvreport(venv, action):
-    _init_pipenv_environ()
-    pipfile_path, pipfile_lock_path = _clone_pipfile(venv)
-
-    basepath = venv.path.dirpath()
-    basepath.ensure(dir=1)
-    with wrap_pipenv_environment(venv, pipfile_path):
-        action.setactivity("runenvreport", "")
-        # call pipenv graph
-        args = [sys.executable, "-m", "pipenv", "graph"]
-        output = venv._pcall(args, action=action, cwd=basepath)
-
-        output = output.split("\n")
+    if _should_skip(venv):
+        return
+    action.setactivity("runenvreport", "")
+    output = _pipenv_command(venv, args=["graph"], action=action).splitlines()
     return output
