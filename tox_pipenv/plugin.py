@@ -39,6 +39,9 @@ def _init_global_pipfile_from_env_var():
     PIPFILE_LOCK_ENV = PIPFILE_LOCK + ".{envname}"
 
 
+_init_global_pipfile_from_env_var()
+
+
 def _pipfile_if_exists(venv, in_path=None, lock_file_fmt=None):
     """
     Get Pipfile and Pipfile.lock paths for the given venv under in_path.
