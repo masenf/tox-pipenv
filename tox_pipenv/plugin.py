@@ -4,14 +4,12 @@ Use `pipenv` to install or sync dependencies.
 Tox plugin overrides `install_deps` action to either install or sync
 dependencies from a `Pipfile` into the current test environment.
 """
-import contextlib
 import shlex
 import sys
 import os
 
 import py.path
 from tox import hookimpl
-from tox import reporter
 
 
 DEFAULT_PIPENV_ENV = {
