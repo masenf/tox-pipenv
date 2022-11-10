@@ -25,18 +25,26 @@ ENV_PIPENV_PIPFILE = "PIPENV_PIPFILE"
 PIPFILE_PARENT = PIPFILE = PIPFILE_LOCK = PIPFILE_LOCK_ENV = None
 
 
-def _init_global_pipfile_from_env_var():
+class ToxPipenvError(Exception):
+    """Raised when the plugin encounters some error."""
+
+
+def _init_global_pipfile(pipenv_pipfile_str):
     global PIPFILE_PARENT, PIPFILE, PIPFILE_LOCK, PIPFILE_LOCK_ENV
 
-    pipenv_pipfile_str = os.environ.get(ENV_PIPENV_PIPFILE)
     if pipenv_pipfile_str is not None:
         pipenv_pipfile = py.path.local(pipenv_pipfile_str)
         PIPFILE_PARENT = pipenv_pipfile.parts()[-2]
         PIPFILE = pipenv_pipfile.basename
     else:
+        PIPFILE_PARENT = None
         PIPFILE = "Pipfile"
     PIPFILE_LOCK = PIPFILE + ".lock"
     PIPFILE_LOCK_ENV = PIPFILE_LOCK + ".{envname}"
+
+
+def _init_global_pipfile_from_env_var():
+    _init_global_pipfile(pipenv_pipfile_str=os.environ.get(ENV_PIPENV_PIPFILE) or None)
 
 
 _init_global_pipfile_from_env_var()
@@ -134,6 +142,13 @@ def _pipenv_env(venv, pipfile_path=None):
     """Return environment variables for running `pipenv`."""
     if pipfile_path is None:
         pipfile_path, _ = _venv_pipfile(venv)
+    if pipfile_path is None:
+        raise ToxPipenvError(
+            "Unable to generate environment variables, {} not found for {}".format(
+                PIPFILE,
+                venv.envconfig.envname,
+            )
+        )
     env = DEFAULT_PIPENV_ENV.copy()
     env.update(os.environ)
     env["VIRTUAL_ENV"] = str(venv.path)
@@ -164,6 +179,13 @@ def _pipenv_command(venv, args, action, **kwargs):
 def _venv_pipenv_lock(venv, action):
     """Perform an explicit `pipenv lock` operation in the venv."""
     pipfile_path, _ = _venv_pipfile(venv)
+    if pipfile_path is None:
+        raise ToxPipenvError(
+            "Unable to explicitly lock deps for {}, no {} was found".format(
+                venv.envconfig.envname,
+                PIPFILE,
+            )
+        )
     action.setactivity(
         "pipenvlock",
         "<{}>".format(pipfile_path),
@@ -229,7 +251,7 @@ def _should_skip(venv):
         return True
     try:
         deps = venv.get_resolved_dependencies()
-    except AttributeError:
+    except AttributeError:  # pragma: no cover
         # _getresolvedeps was deprecated on tox 3.7.0 in favor of get_resolved_dependencies
         deps = venv._getresolvedeps()
     if deps:
