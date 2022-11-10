@@ -1,88 +1,51 @@
 import pytest
-from tox_pipenv.plugin import tox_testenv_install_deps
+from tox_pipenv.plugin import tox_testenv_install_deps, _pipenv_env
 import subprocess
-import os
 import sys
 
 
-def test_install_no_deps(venv, mocker, actioncls):
-    """
-    Test that nothing is called when there are no deps
-    """
-    action = actioncls(venv)
-    venv.deps = []
+@pytest.fixture
+def mock_for_Popen(mocker):
     mocker.patch.dict("os.environ")
     mocker.patch("subprocess.Popen")
-    result = tox_testenv_install_deps(venv, action)
-    assert result == True
-    assert subprocess.Popen.call_count == 1
-    subprocess.Popen.assert_called_once_with(
-        [
-            sys.executable,
-            "-m",
-            "pipenv",
-            "install",
-            "--dev",
-        ],
-        action=action,
-        cwd=venv.path.dirpath(),
+
+
+@pytest.mark.parametrize(
+    "deps",
+    (
+        [],
+        ["foo"],
     )
-
-
-def test_install_special_deps(venv, mocker, actioncls):
+)
+@pytest.mark.usefixtures("mock_for_Popen")
+def test_install_deps(venv, deps, action, has_pipfile, has_pipfile_lock, has_pip_pre):
     """
-    Test that nothing is called when there are no deps
+    Test that the plugin is active when deps are empty and a Pipfile is present.
     """
-    action = actioncls(venv)
-
-    venv.deps = ["foo-package", "foo-two-package"]
-    mocker.patch.dict("os.environ")
-    mocker.patch("subprocess.Popen")
+    venv.deps = deps
     result = tox_testenv_install_deps(venv, action)
-    assert result == True
+    exp_cmd = "install"
+    exp_args = []
+    if not deps and (has_pipfile or has_pipfile_lock):
+        assert result is True
+        if has_pipfile_lock:
+            exp_cmd = "sync"
+        if has_pip_pre:
+            exp_args.append("--pre")
+    else:
+        assert result is None
+        return
     assert subprocess.Popen.call_count == 1
     subprocess.Popen.assert_called_once_with(
         [
             sys.executable,
             "-m",
             "pipenv",
-            "install",
-            "--dev",
-            "foo-package",
-            "foo-two-package",
-        ],
+            exp_cmd,
+        ] + exp_args,
         action=action,
         cwd=venv.path.dirpath(),
-    )
-
-
-
-def test_install_pip_pre_deps(venv, mocker, actioncls):
-    """
-    Test that nothing is called when there are no deps
-    """
-    action = actioncls(venv)
-
-    venv.deps = ["foo-package", "foo-two-package"]
-    mocker.patch.dict("os.environ")
-    mocker.patch.object(action.venv.envconfig, 'pip_pre', True)
-    mocker.patch("subprocess.Popen")
-    result = tox_testenv_install_deps(venv, action)
-    assert result == True
-    assert subprocess.Popen.call_count == 1
-    subprocess.Popen.assert_called_once_with(
-        [
-            sys.executable,
-            "-m",
-            "pipenv",
-            "install",
-            "--dev",
-            "--pre",
-            "foo-package",
-            "foo-two-package",
-        ],
-        action=action,
-        cwd=venv.path.dirpath(),
+        env=_pipenv_env(venv),
     )
 
 
@@ -90,95 +53,69 @@ def test_install_pip_pre_deps(venv, mocker, actioncls):
     "lock_file_name",
     (
         "Pipfile.lock",
-        "Pipfile.lock.mock",
+        "Pipfile.lock.foo",
     )
 )
-@pytest.mark.parametrize(
-    "deps",
-    (
-        [],
-        ["foo-package", "foo-two-package"],
-    ),
-)
-def test_install_sync(venv, mocker, actioncls, lock_file_name, deps):
+def test_pipfile_non_venv_lock(venv, mocker, action, lock_file_name):
     """
-    `pipenv sync` is used when a Pipfile.lock is present.
-
-    When `pipenv sync` is used, do not pass a dependency list.
+    Plugin is not active when `Pipfile.lock` or `Pipfile.lock.foo` present.
     """
     (venv.session.config.toxinidir / lock_file_name).ensure()
-    action = actioncls(venv)
-
-    venv.deps = deps
     mocker.patch.dict("os.environ")
     mocker.patch("subprocess.Popen")
     result = tox_testenv_install_deps(venv, action)
-    assert result == True
-    assert subprocess.Popen.call_count == 1
-    subprocess.Popen.assert_called_once_with(
-        [
-            sys.executable,
-            "-m",
-            "pipenv",
-            "sync",
-            "--dev",
-        ],
-        action=action,
-        cwd=venv.path.dirpath(),
-    )
-    if not deps:
-        assert action.activities == [("installdeps", "[]")]
-    else:
-        assert action.activities == [
-            (
-                "installdeps",
-                "<sync to {}>".format(venv.envconfig.envdir / "Pipfile.lock"),
-            )
-        ]
+    assert result is None
+    assert subprocess.Popen.call_count == 0
 
 
 @pytest.mark.parametrize(
-    "lock_file_name",
+    "touch_file_name",
     (
-        None,
-        "Pipfile.lock",
+        "Pipfile",
         "Pipfile.lock.mock",
     )
 )
 @pytest.mark.parametrize(
-    "deps",
+    "set_where",
     (
-        [],
-        ["foo-package", "foo-two-package"],
-    ),
-)
-def test_install_args_override(venv, mocker, actioncls, lock_file_name, deps):
-    """
-    Check that TOX_PIPENV_INSTALL_ARGS are respected regardless of lock file state.
-    """
-    if lock_file_name is not None:
-        (venv.session.config.toxinidir / lock_file_name).ensure()
-    action = actioncls(venv)
-
-    venv.deps = deps
-    mocker.patch.dict(
-        "os.environ",
-        {"TOX_PIPENV_INSTALL_ARGS": "install --deploy -v"},
+        "venv",
+        "environ",
     )
+)
+def test_install_override(venv, mocker, action, touch_file_name, set_where):
+    """
+    Check that overrides are respected regardless of lock file state.
+    """
+    if touch_file_name is not None:
+        (venv.session.config.toxinidir / touch_file_name).ensure()
+    cmd = "foo"
+    opts = "--deploy -v"
+    opts_shlex = ["--deploy", "-v"]
+    if set_where == "environ":
+        mocker.patch.dict(
+            "os.environ",
+            {"TOX_PIPENV_INSTALL_CMD": cmd},
+        )
+        mocker.patch.dict(
+            "os.environ",
+            {"TOX_PIPENV_INSTALL_OPTS": opts},
+        )
+    else:
+        venv.envconfig.pipenv_install_cmd = cmd
+        venv.envconfig.pipenv_install_opts = opts
     mocker.patch("subprocess.Popen")
     exp_command = [
             sys.executable,
             "-m",
             "pipenv",
-            "install",
-            "--deploy",
-            "-v",
-    ] + deps
+            cmd,
+    ] + opts_shlex
     result = tox_testenv_install_deps(venv, action)
-    assert result == True
+    assert result is True
     assert subprocess.Popen.call_count == 1
     subprocess.Popen.assert_called_once_with(
         exp_command,
         action=action,
         cwd=venv.path.dirpath(),
+        env=_pipenv_env(venv),
     )
