@@ -18,7 +18,7 @@ DEFAULT_PIPENV_ENV = {
     "PIPENV_VERBOSITY": "-1",  # suppress existing venv warning
     "PIPENV_NOSPIN": "1",  # suppress terminal animations
 }
-DEFAULT_PIPENV_INSTALL_OPTS = []
+DEFAULT_PIPENV_INSTALL_OPTS = tuple()
 ENV_PIPENV_INSTALL_OPTS = "TOX_PIPENV_INSTALL_OPTS"
 ENV_PIPENV_INSTALL_CMD = "TOX_PIPENV_INSTALL_CMD"
 ENV_PIPENV_PIPFILE = "PIPENV_PIPFILE"
@@ -250,16 +250,16 @@ def _install_args(venv):
     if args_str:
         args = list(shlex.split(args_str))
     else:
-        args = DEFAULT_PIPENV_INSTALL_OPTS
+        args = list(DEFAULT_PIPENV_INSTALL_OPTS)
     install_cmd = os.environ.get(ENV_PIPENV_INSTALL_CMD, venv.envconfig.pipenv_install_cmd)
     if install_cmd is None:
         if pipfile_lock_path is None:
             install_cmd = "install"
-            if venv.envconfig.pip_pre:
-                args.append('--pre')
         else:
             # the project provides a lockfile for this environment, so sync to it
             install_cmd = "sync"
+        if venv.envconfig.pip_pre:
+            args.append('--pre')
     return [install_cmd] + args
 
 
