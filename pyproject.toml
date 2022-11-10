@@ -7,7 +7,7 @@ requires = [
 build-backend = 'setuptools.build_meta'
 
 [project]
-name = "tox-pipenv"
+name = "tox-pipenv2"
 description = "A pipenv plugin for tox"
 authors = [
     {name = "Masen Furer", email = "m_github@0x26.net"},
