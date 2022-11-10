@@ -1,1 +1,1 @@
-__version__ = "1.11.0.a3"
+"""A pipenv plugin for tox."""
