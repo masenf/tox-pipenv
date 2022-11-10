@@ -1,5 +1,9 @@
-import pytest
 import subprocess
+import uuid
+
+import pytest
+
+import tox_pipenv.plugin
 
 
 class MockOption(object):
@@ -47,7 +51,7 @@ class MockVenv(object):
 
     @property
     def path(self):
-        """ Path to environment base dir. """
+        """Path to environment base dir."""
         return self.envconfig.envdir
 
     def getsupportedinterpreter(self):
@@ -92,7 +96,9 @@ def has_pipfile(request, venv):
 @pytest.fixture(params=[True, False], ids=["has_Pipfile.lock", "no_Pipfile.lock"])
 def has_pipfile_lock(request, venv):
     if request.param:
-        venv._pipfile_lock = venv.session.config.toxinidir / "Pipfile.lock.{}".format(venv.envconfig.envname)
+        venv._pipfile_lock = venv.session.config.toxinidir / "Pipfile.lock.{}".format(
+            venv.envconfig.envname
+        )
         venv._pipfile_lock.ensure()
     return request.param
 
@@ -101,6 +107,29 @@ def has_pipfile_lock(request, venv):
 def has_pip_pre(request, venv):
     venv.envconfig.pip_pre = request.param
     return request.param
+
+
+@pytest.fixture(params=[True, False], ids=["has_skip_pipenv", "no_skip_pipenv"])
+def has_skip_pipenv(request, venv):
+    venv.envconfig.skip_pipenv = request.param
+    return request.param
+
+
+@pytest.fixture(params=[True, False], ids=["has_pipenv_lock", "no_pipenv_lock"])
+def has_pipenv_lock(request, mocker, venv, action):
+    venv.envconfig.config.option.pipenv_lock = request.param
+    if request.param:
+        mock_lock_data = str(uuid.uuid4())
+
+        _venv_pipenv_lock = tox_pipenv.plugin._venv_pipenv_lock
+
+        def _do_lock(*args, **kwargs):
+            (venv.path / tox_pipenv.plugin.PIPFILE_LOCK).write(mock_lock_data)
+            return _venv_pipenv_lock(venv, action)
+
+        mocker.patch("tox_pipenv.plugin._venv_pipenv_lock", side_effect=_do_lock)
+        return mock_lock_data
+    return False
 
 
 @pytest.fixture
@@ -112,3 +141,8 @@ def actioncls():
 def action(venv, actioncls):
     return actioncls(venv)
 
+
+@pytest.fixture
+def mock_for_Popen(mocker):
+    mocker.patch.dict("os.environ")
+    mocker.patch("subprocess.Popen")
