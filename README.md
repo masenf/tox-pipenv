@@ -69,7 +69,7 @@ If true, this plugin will not take any action in the environment.
 
 ## `pipenv_install_cmd`
 
-_argv_. Specified per `[testenv]` section.
+_string_. Specified per `[testenv]` section.
 
 Override the sub-command passed to `pipenv` during the `install_deps` stage.
 
@@ -234,7 +234,7 @@ should use Pipfile, then remove the `deps` and manage all dependencies via
 Authors
 -------
 
+* Masen Furer (2.0 rewrite)
 * Anthony Shaw
 * Omer Katz
 * Almog Cohen
-* Masen Furer (2.0 rewrite)
