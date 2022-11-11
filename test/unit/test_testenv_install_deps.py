@@ -23,7 +23,7 @@ def test_install_deps(
     has_pipfile_lock,
     has_pip_pre,
     has_skip_pipenv,
-    has_pipenv_lock,
+    has_pipenv_update,
 ):
     """
     Test that the plugin is active when deps are empty and a Pipfile is present.
@@ -31,7 +31,7 @@ def test_install_deps(
     venv.deps = deps
     exp_plugin_ran = not (deps or has_skip_pipenv) and (has_pipfile or has_pipfile_lock)
 
-    if has_pipenv_lock and (not exp_plugin_ran or not has_pipfile):
+    if has_pipenv_update and (not exp_plugin_ran or not has_pipfile):
         with pytest.raises(tox_pipenv.plugin.ToxPipenvError):
             _ = tox_testenv_install_deps(venv, action)
         return
@@ -42,7 +42,9 @@ def test_install_deps(
     exp_args = []
     if exp_plugin_ran:
         assert result is True
-        if has_pipfile_lock or has_pipenv_lock:
+        if has_pipenv_update:
+            exp_cmd = "update"
+        elif has_pipfile_lock or has_pipenv_update:
             exp_cmd = "sync"
         if has_pip_pre:
             exp_args.append("--pre")
@@ -50,19 +52,7 @@ def test_install_deps(
         assert result is None
         return
 
-    if has_pipenv_lock:
-        assert subprocess.Popen.call_count == 2
-        subprocess.Popen.assert_any_call(
-            [
-                sys.executable,
-                "-m",
-                "pipenv",
-                "lock",
-            ],
-            action=action,
-            cwd=venv.path.dirpath(),
-            env=_pipenv_env(venv),
-        )
+    if has_pipenv_update:
         toxinidir_lock_file = (
             venv.envconfig.config.toxinidir
             / tox_pipenv.plugin.PIPFILE_LOCK_ENV.format(
@@ -70,9 +60,8 @@ def test_install_deps(
             )
         )
         assert toxinidir_lock_file.exists()
-        assert toxinidir_lock_file.read() == has_pipenv_lock
-    else:
-        assert subprocess.Popen.call_count == 1
+        assert toxinidir_lock_file.read() == has_pipenv_update
+    assert subprocess.Popen.call_count == 1
     subprocess.Popen.assert_called_with(
         [
             sys.executable,

@@ -8,7 +8,7 @@ import tox_pipenv.plugin
 
 class MockOption(object):
     def __init__(self):
-        self.pipenv_lock = False
+        self.pipenv_update = False
 
 
 class MockConfig(object):
@@ -115,19 +115,19 @@ def has_skip_pipenv(request, venv):
     return request.param
 
 
-@pytest.fixture(params=[True, False], ids=["has_pipenv_lock", "no_pipenv_lock"])
-def has_pipenv_lock(request, mocker, venv, action):
-    venv.envconfig.config.option.pipenv_lock = request.param
+@pytest.fixture(params=[True, False], ids=["has_pipenv_update", "no_pipenv_update"])
+def has_pipenv_update(request, mocker, venv, action):
+    venv.envconfig.config.option.pipenv_update = request.param
     if request.param:
         mock_lock_data = str(uuid.uuid4())
 
-        _venv_pipenv_lock = tox_pipenv.plugin._venv_pipenv_lock
+        _pipenv_command = tox_pipenv.plugin._pipenv_command
 
-        def _do_lock(*args, **kwargs):
+        def _make_lock_file(*args, **kwargs):
             (venv.path / tox_pipenv.plugin.PIPFILE_LOCK).write(mock_lock_data)
-            return _venv_pipenv_lock(venv, action)
+            return _pipenv_command(*args, **kwargs)
 
-        mocker.patch("tox_pipenv.plugin._venv_pipenv_lock", side_effect=_do_lock)
+        mocker.patch("tox_pipenv.plugin._pipenv_command", side_effect=_make_lock_file)
         return mock_lock_data
     return False
 

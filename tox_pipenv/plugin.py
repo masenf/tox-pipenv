@@ -176,31 +176,13 @@ def _pipenv_command(venv, args, action, **kwargs):
     )
 
 
-def _venv_pipenv_lock(venv, action):
-    """Perform an explicit `pipenv lock` operation in the venv."""
-    pipfile_path, _ = _venv_pipfile(venv)
-    if pipfile_path is None:
-        raise ToxPipenvError(
-            "Unable to explicitly lock deps for {}, no {} was found".format(
-                venv.envconfig.envname,
-                PIPFILE,
-            )
-        )
-    action.setactivity(
-        "pipenvlock",
-        "<{}>".format(pipfile_path),
-    )
-    _pipenv_command(venv, args=["lock"], action=action)
-    return _venv_pipfile(venv)
-
-
 @hookimpl
 def tox_addoption(parser):
     parser.add_argument(
-        "--pipenv-lock",
+        "--pipenv-update",
         action="store_true",
         default=False,
-        help="Explicitly run `pipenv lock` to create or update a Pipfile.lock",
+        help="Run `pipenv update` and copy resulting Pipfile.lock into {toxinidir}",
     )
     parser.add_testenv_attribute(
         "skip_pipenv",
@@ -218,8 +200,8 @@ def tox_addoption(parser):
         type="string",
         default=None,
         help=(
-            "Override the `install` or `sync` command executed during installdeps. "
-            "(var {})".format(ENV_PIPENV_INSTALL_CMD)
+            "Override the `install`, `sync`, or `update` command executed during "
+            "installdeps. (var {})".format(ENV_PIPENV_INSTALL_CMD)
         ),
     )
     parser.add_testenv_attribute(
@@ -269,7 +251,7 @@ def _install_args(venv):
     """
     Get the args passed `pipenv` for install_deps.
 
-    If no user suppled args are available, return None.
+    If no user supplied args are available, return None.
     """
     pipfile_path, pipfile_lock_path = _venv_pipfile(venv)
     if pipfile_path is None:
@@ -290,7 +272,19 @@ def _install_args(venv):
         venv.envconfig.pipenv_install_cmd,
     )
     if install_cmd is None:
-        if pipfile_lock_path is None:
+        g_config = venv.envconfig.config
+        if g_config.option.pipenv_update:
+            install_cmd = "update"
+            toxinidir_pipfile_path, _ = _toxinidir_pipfile(venv)
+            if toxinidir_pipfile_path is None:
+                raise ToxPipenvError(
+                    "Unable to update for {}, no {} was found in {}".format(
+                        venv.envconfig.envname,
+                        PIPFILE,
+                        g_config.toxinidir,
+                    )
+                )
+        elif pipfile_lock_path is None:
             install_cmd = "install"
         else:
             # the project provides a lockfile for this environment, so sync to it
@@ -305,23 +299,12 @@ def tox_testenv_install_deps(venv, action):
     g_config = venv.envconfig.config
     skip_reason = _should_skip(venv)
     if skip_reason:
-        if g_config.option.pipenv_lock:
+        if g_config.option.pipenv_update:
             raise ToxPipenvError(
-                "--pipenv-lock is specified, but {}".format(skip_reason)
+                "--pipenv-update is specified, but {}".format(skip_reason)
             )
         return
     pipfile_path, pipfile_lock_path = _clone_pipfile(venv)
-    if g_config.option.pipenv_lock:
-        # user requested explicit locking
-        pipfile_path, pipfile_lock_path = _venv_pipenv_lock(venv, action)
-        # copy the lock file back to project dir to be committed
-        project_dir = PIPFILE_PARENT or g_config.toxinidir
-        pipfile_lock_path.copy(
-            project_dir
-            / PIPFILE_LOCK_ENV.format(
-                envname=venv.envconfig.envname,
-            ),
-        )
     install_args = _install_args(venv)
     action.setactivity(
         "pipenv",
@@ -335,6 +318,16 @@ def tox_testenv_install_deps(venv, action):
         args=install_args,
         action=action,
     )
+    if g_config.option.pipenv_update:
+        # copy the lock file back to project dir to be committed
+        _, pipfile_lock_path = _venv_pipfile(venv)
+        project_dir = PIPFILE_PARENT or g_config.toxinidir
+        pipfile_lock_path.copy(
+            project_dir
+            / PIPFILE_LOCK_ENV.format(
+                envname=venv.envconfig.envname,
+            ),
+        )
     # Return True to stop further plugins from installing deps
     return True
 

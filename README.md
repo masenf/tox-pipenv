@@ -51,13 +51,13 @@ When using lock files ("strict pinning"), the per-environment
 updating dependency pins.
 
 ```
-tox --recreate --pipenv-lock
+tox --recreate --pipenv-update
 ```
 
 Can be used to have this plugin explicitly re-lock the dependencies for each
 environment and copy the result to `{toxinidir}/Pipfile.lock.{envname}`.
 
-Subsequent tox invocations without `--pipenv-lock` will install the
+Subsequent tox invocations without `--pipenv-update` will install the
 dependencies specified in the lockfile associated with the environment.
 
 To achieve repeatable deployments, it is recommended to keep the `Pipfile` and
@@ -175,7 +175,7 @@ pytest-mock = "*"
 ## Locking it Down
 
 ```
-tox --recreate --pipenv-lock --notest
+tox --recreate --pipenv-update --notest
 ```
 
 Look for the new `Pipfile.lock.py27` and `Pipfile.lock.py36` files created in

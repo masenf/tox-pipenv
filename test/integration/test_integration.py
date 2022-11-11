@@ -101,8 +101,8 @@ def use_Pipfile_lock_env(request, pytester):
     return request.param
 
 
-@pytest.fixture(params=[True, False], ids=["['--pipenv-lock']", "[]"])
-def pass_pipenv_lock(request):
+@pytest.fixture(params=[True, False], ids=["['--pipenv-update']", "[]"])
+def pass_pipenv_update(request):
     return request.param
 
 
@@ -127,7 +127,7 @@ def test_end_to_end(
     pytester,
     use_Pipfile,
     use_Pipfile_lock_env,
-    pass_pipenv_lock,
+    pass_pipenv_update,
     pipenv_install_cmd,
     pipenv_install_opts,
 ):
@@ -136,11 +136,11 @@ def test_end_to_end(
     command = [sys.executable, "-m", "tox"]
     if not use_Pipfile_lock_env:
         assert not (pytester.path / "Pipfile.lock.py").exists()
-    if pass_pipenv_lock:
-        command.append("--pipenv-lock")
+    if pass_pipenv_update:
+        command.append("--pipenv-update")
 
     result = pytester.run(*command)
-    if pass_pipenv_lock and not use_Pipfile:
+    if pass_pipenv_update and not use_Pipfile:
         # can't lock without a Pipfile
         assert result.ret != 0
         return
@@ -151,17 +151,11 @@ def test_end_to_end(
             "py run-test: commands[0] | pip freeze",
         ]
     )
-    if pass_pipenv_lock:
-        result.stdout.fnmatch_lines(
-            [
-                "py pipenvlock: <{}/.tox/py/Pipfile>".format(pytester.path),
-            ]
-        )
-    else:
-        result.stdout.no_fnmatch_line("py pipenvlock:.*")
     if pipenv_install_cmd:
         exp_install_cmd = [pipenv_install_cmd]
-    elif pass_pipenv_lock or use_Pipfile_lock_env:
+    elif pass_pipenv_update:
+        exp_install_cmd = ["update"]
+    elif use_Pipfile_lock_env:
         exp_install_cmd = ["sync"]
     else:
         exp_install_cmd = ["install"]
@@ -173,19 +167,20 @@ def test_end_to_end(
     if pipenv_install_cmd and not use_Pipfile:
         # overriding the install command allows use w/o Pipfile
         exp_path = None
-    if pass_pipenv_lock or use_Pipfile or use_Pipfile_lock_env:
+    if pass_pipenv_update or use_Pipfile or use_Pipfile_lock_env:
         result.stdout.fnmatch_lines(
             [
                 "py pipenv: <{} {}>".format(exp_install_cmd, exp_path),
             ]
         )
         if (use_Pipfile and exp_install_cmd[0] == "install") or (
-            (pass_pipenv_lock or use_Pipfile_lock_env) and exp_install_cmd[0] == "sync"
+            (pass_pipenv_update or use_Pipfile_lock_env)
+            and exp_install_cmd[0] == "sync"
         ):
             result.stdout.fnmatch_lines(["iterlist==0.4"])
     else:
         result.stdout.no_fnmatch_line("iterlist==*")
-    if pass_pipenv_lock and not use_Pipfile_lock_env:
+    if pass_pipenv_update and not use_Pipfile_lock_env:
         new_lock_file = pytester.path / "Pipfile.lock.py"
         assert new_lock_file.exists()
         new_lock_file_contents = new_lock_file.read_text()
@@ -194,14 +189,14 @@ def test_end_to_end(
         assert new_lock_file_contents == PIPFILE_SIMPLE_LOCK
 
 
-def test_end_to_end_deps(pytester, use_Pipfile, pass_pipenv_lock):
+def test_end_to_end_deps(pytester, use_Pipfile, pass_pipenv_update):
     """Call tox with deps= specified and validate the `pip freeze` output."""
     pytester.makefile(".ini", tox=TOX_INI_DEPS_SIMPLE)
     command = [sys.executable, "-m", "tox"]
-    if pass_pipenv_lock:
-        command.append("--pipenv-lock")
+    if pass_pipenv_update:
+        command.append("--pipenv-update")
     result = pytester.run(*command)
-    if pass_pipenv_lock:
+    if pass_pipenv_update:
         # can't lock if `deps` are specified
         assert result.ret != 0
         return
