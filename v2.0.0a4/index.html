@@ -1,0 +1,154 @@
+
+<!DOCTYPE html>
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="generator" content="Docutils 0.19: https://docutils.sourceforge.io/" />
+
+    <title>Welcome to tox-pipenv’s documentation! &#8212; tox-pipenv2 2.0.0a4 documentation</title>
+    <link rel="stylesheet" type="text/css" href="_static/pygments.css" />
+    <link rel="stylesheet" type="text/css" href="_static/alabaster.css" />
+    <script data-url_root="./" id="documentation_options" src="_static/documentation_options.js"></script>
+    <script src="_static/jquery.js"></script>
+    <script src="_static/underscore.js"></script>
+    <script src="_static/_sphinx_javascript_frameworks_compat.js"></script>
+    <script src="_static/doctools.js"></script>
+    <script src="_static/sphinx_highlight.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+   
+  <link rel="stylesheet" href="_static/custom.css" type="text/css" />
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9" />
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <section id="welcome-to-tox-pipenv-s-documentation">
+<h1>Welcome to tox-pipenv’s documentation!<a class="headerlink" href="#welcome-to-tox-pipenv-s-documentation" title="Permalink to this heading">¶</a></h1>
+<div class="toctree-wrapper compound">
+</div>
+<section id="what-is-tox">
+<h2>What is tox?<a class="headerlink" href="#what-is-tox" title="Permalink to this heading">¶</a></h2>
+<p>tox is a generic virtualenv management and test command line tool you can use for:</p>
+<ul class="simple">
+<li><p>checking your package installs correctly with different Python versions and
+interpreters</p></li>
+<li><p>running your tests in each of the environments, configuring your test tool of choice</p></li>
+<li><p>acting as a frontend to Continuous Integration servers, greatly
+reducing boilerplate and merging CI and shell-based testing.</p></li>
+</ul>
+</section>
+<section id="what-is-pipenv">
+<h2>What is Pipenv?<a class="headerlink" href="#what-is-pipenv" title="Permalink to this heading">¶</a></h2>
+<p><strong>Pipenv</strong> — the officially recommended Python packaging tool from <a class="reference external" href="https://packaging.python.org/tutorials/managing-dependencies/#managing-dependencies">Python.org</a>, free (as in freedom).</p>
+<p>Pipenv is a tool that aims to bring the best of all packaging worlds (bundler, composer, npm, cargo, yarn, etc.) to the Python world. <em>Windows is a first–class citizen, in our world.</em></p>
+<p>It automatically creates and manages a virtualenv for your projects, as well as adds/removes packages from your <code class="docutils literal notranslate"><span class="pre">Pipfile</span></code> as you install/uninstall packages. It also generates the ever–important <code class="docutils literal notranslate"><span class="pre">Pipfile.lock</span></code>, which is used to produce deterministic builds.</p>
+</section>
+<section id="what-is-tox-pipenv">
+<h2>What is tox-pipenv?<a class="headerlink" href="#what-is-tox-pipenv" title="Permalink to this heading">¶</a></h2>
+<p>tox-pipenv is a tox plugin to replace the default use of virtualenv, and pip with Pipenv’s development workflow.</p>
+<p>This is a convenient way to retain your use of Pipenv, whilst testing multiple versions of Python.</p>
+</section>
+<section id="installation">
+<h2>Installation<a class="headerlink" href="#installation" title="Permalink to this heading">¶</a></h2>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip install tox-pipenv
+</pre></div>
+</div>
+<p>Or,</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pipenv install tox-pipenv
+</pre></div>
+</div>
+</section>
+<section id="creating-virtual-environments">
+<h2>Creating virtual environments<a class="headerlink" href="#creating-virtual-environments" title="Permalink to this heading">¶</a></h2>
+<p>With this plugin, tox will use <cite>pipenv –python {python binary}</cite> as given to the tox interpreter for each python path.</p>
+<p>If you already have virtual environments cached with tox, use the –recreate flag to recreate them with pipenv.</p>
+<p>Note: tox will pass the –site-packages flag to pipenv if this is configured in your tox config.</p>
+<p>The Pipfile will exist in .tox/{env}/Pipfile as well as Pipfile.lock</p>
+</section>
+<section id="installing-requirements">
+<h2>Installing requirements<a class="headerlink" href="#installing-requirements" title="Permalink to this heading">¶</a></h2>
+<p>The installation of requirements from your tox config will be passed to pipenv install for installation into the virtual
+environment. This replaces the use of pip within tox.</p>
+<p><code class="docutils literal notranslate"><span class="pre">requirements.txt</span></code> files will also be parsed by Pipenv and used for each test environment</p>
+</section>
+<section id="executing-tests">
+<h2>Executing tests<a class="headerlink" href="#executing-tests" title="Permalink to this heading">¶</a></h2>
+<p>Each of the commands in your testenv configuration will be passed to pipenv to execute within the pipenv virtual environment</p>
+</section>
+</section>
+
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="#">tox-pipenv2</a></h1>
+
+
+
+
+
+
+
+
+<h3>Navigation</h3>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="#">Documentation overview</a><ul>
+  </ul></li>
+</ul>
+</div>
+<div id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</div>
+<script>document.getElementById('searchbox').style.display = "block"</script>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &copy;2022, Masen Furer; 2018, Anthony Shaw.
+      
+      |
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 5.3.0</a>
+      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.12</a>
+      
+      |
+      <a href="_sources/index.rst.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
+</html>
