@@ -1,4 +1,5 @@
 import sys
+import shlex
 from textwrap import dedent
 
 import pytest
@@ -105,7 +106,31 @@ def pass_pipenv_lock(request):
     return request.param
 
 
-def test_end_to_end(pytester, use_Pipfile, use_Pipfile_lock_env, pass_pipenv_lock):
+@pytest.fixture(
+    params=["--dev", "--dev --pre", None],
+    ids=["['--dev']", "['--dev', '--pre']", "[]"],
+)
+def pipenv_install_opts(request, monkeypatch):
+    if request.param:
+        monkeypatch.setenv("TOX_PIPENV_INSTALL_OPTS", request.param)
+    return request.param
+
+
+@pytest.fixture(params=["install", "update", None])
+def pipenv_install_cmd(request, monkeypatch):
+    if request.param:
+        monkeypatch.setenv("TOX_PIPENV_INSTALL_CMD", request.param)
+    return request.param
+
+
+def test_end_to_end(
+    pytester,
+    use_Pipfile,
+    use_Pipfile_lock_env,
+    pass_pipenv_lock,
+    pipenv_install_cmd,
+    pipenv_install_opts,
+):
     """Call tox and validate the `pip freeze` output."""
     pytester.makefile(".ini", tox=TOX_INI_PIPFILE_SIMPLE)
     command = [sys.executable, "-m", "tox"]
@@ -134,20 +159,30 @@ def test_end_to_end(pytester, use_Pipfile, use_Pipfile_lock_env, pass_pipenv_loc
         )
     else:
         result.stdout.no_fnmatch_line("py pipenvlock:.*")
-    if pass_pipenv_lock or use_Pipfile_lock_env:
+    if pipenv_install_cmd:
+        exp_install_cmd = [pipenv_install_cmd]
+    elif pass_pipenv_lock or use_Pipfile_lock_env:
+        exp_install_cmd = ["sync"]
+    else:
+        exp_install_cmd = ["install"]
+    if pipenv_install_opts:
+        exp_install_cmd.extend(shlex.split(pipenv_install_opts))
+    exp_path = pytester.path / ".tox" / "py" / "Pipfile"
+    if "sync" in exp_install_cmd:
+        exp_path = str(exp_path) + ".lock"
+    if pipenv_install_cmd and not use_Pipfile:
+        # overriding the install command allows use w/o Pipfile
+        exp_path = None
+    if pass_pipenv_lock or use_Pipfile or use_Pipfile_lock_env:
         result.stdout.fnmatch_lines(
             [
-                "py pipenv: <['sync'] {}/.tox/py/Pipfile.lock>".format(pytester.path),
-                "iterlist==0.4",
+                "py pipenv: <{} {}>".format(exp_install_cmd, exp_path),
             ]
         )
-    elif use_Pipfile:
-        result.stdout.fnmatch_lines(
-            [
-                "py pipenv: <['install'] {}/.tox/py/Pipfile>".format(pytester.path),
-                "iterlist==0.4",
-            ]
-        )
+        if (use_Pipfile and exp_install_cmd[0] == "install") or (
+            (pass_pipenv_lock or use_Pipfile_lock_env) and exp_install_cmd[0] == "sync"
+        ):
+            result.stdout.fnmatch_lines(["iterlist==0.4"])
     else:
         result.stdout.no_fnmatch_line("iterlist==*")
     if pass_pipenv_lock and not use_Pipfile_lock_env:
