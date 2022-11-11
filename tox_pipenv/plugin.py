@@ -85,7 +85,7 @@ def _toxinidir_pipfile(venv):
 
     Return tuple of (pipfile_path, pipfile_lock_path).
     """
-    config = getattr(venv, 'session', venv.envconfig).config
+    config = getattr(venv, "session", venv.envconfig).config
     return _pipfile_if_exists(
         venv,
         in_path=PIPFILE_PARENT or config.toxinidir,
@@ -271,12 +271,18 @@ def _install_args(venv):
         pipfile_path = pipfile_lock_path.parts()[-2] / PIPFILE
         pipfile_path.ensure()
 
-    args_str = os.environ.get(ENV_PIPENV_INSTALL_OPTS, venv.envconfig.pipenv_install_opts)
+    args_str = os.environ.get(
+        ENV_PIPENV_INSTALL_OPTS,
+        venv.envconfig.pipenv_install_opts,
+    )
     if args_str:
         args = list(shlex.split(args_str))
     else:
         args = list(DEFAULT_PIPENV_INSTALL_OPTS)
-    install_cmd = os.environ.get(ENV_PIPENV_INSTALL_CMD, venv.envconfig.pipenv_install_cmd)
+    install_cmd = os.environ.get(
+        ENV_PIPENV_INSTALL_CMD,
+        venv.envconfig.pipenv_install_cmd,
+    )
     if install_cmd is None:
         if pipfile_lock_path is None:
             install_cmd = "install"
@@ -284,7 +290,7 @@ def _install_args(venv):
             # the project provides a lockfile for this environment, so sync to it
             install_cmd = "sync"
         if venv.envconfig.pip_pre:
-            args.append('--pre')
+            args.append("--pre")
     return [install_cmd] + args
 
 
@@ -300,7 +306,8 @@ def tox_testenv_install_deps(venv, action):
         # copy the lock file back to project dir to be committed
         project_dir = PIPFILE_PARENT or g_config.toxinidir
         pipfile_lock_path.copy(
-            project_dir / PIPFILE_LOCK_ENV.format(
+            project_dir
+            / PIPFILE_LOCK_ENV.format(
                 envname=venv.envconfig.envname,
             ),
         )

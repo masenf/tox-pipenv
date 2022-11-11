@@ -1,7 +1,6 @@
 import pytest
 from tox_pipenv.plugin import tox_testenv_install_deps
 import subprocess
-import os
 import sys
 import tox.venv
 from tox.config import parseconfig
@@ -16,10 +15,10 @@ envlist = py36-django{20,master}
 [testenv]
 commands = pytest --showlocals {posargs}
 deps =
-	django20: Django>=2.0,<2.1
-	djangomaster: https://github.com/django/django/archive/master.tar.gz
-	pytest
-	pytest-django
+    django20: Django>=2.0,<2.1
+    djangomaster: https://github.com/django/django/archive/master.tar.gz
+    pytest
+    pytest-django
     """,
 )
 
@@ -41,7 +40,7 @@ def test_install_special_deps(toxconfig, mocker, actioncls, tmpdir):
             venv = tox.venv.VirtualEnv(envconfig, session=session)
             mocker.patch("subprocess.Popen")
             result = tox_testenv_install_deps(venv, action)
-            assert result == True
+            assert result is True
             assert subprocess.Popen.call_count == 1
             call_list = [sys.executable, "-m", "pipenv", "install", "--dev"]
             call_list.extend([package for package in venv._getresolvedeps()])
