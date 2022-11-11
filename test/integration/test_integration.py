@@ -13,7 +13,18 @@ TOX_INI_PIPFILE_SIMPLE = dedent(
     envlist = py
 
     [testenv]
-    commands_pre = env
+    commands = pip freeze""",
+)
+
+
+TOX_INI_DEPS_SIMPLE = dedent(
+    """
+    [tox]
+    skipsdist = True
+    envlist = py
+
+    [testenv]
+    deps = iterlist == 0.4
     commands = pip freeze""",
 )
 
@@ -146,3 +157,27 @@ def test_end_to_end(pytester, use_Pipfile, use_Pipfile_lock_env, pass_pipenv_loc
         print(new_lock_file_contents)
         print(PIPFILE_SIMPLE_LOCK)
         assert new_lock_file_contents == PIPFILE_SIMPLE_LOCK
+
+
+def test_end_to_end_deps(pytester, use_Pipfile, pass_pipenv_lock):
+    """Call tox with deps= specified and validate the `pip freeze` output."""
+    pytester.makefile(".ini", tox=TOX_INI_DEPS_SIMPLE)
+    command = [sys.executable, "-m", "tox"]
+    if pass_pipenv_lock:
+        command.append("--pipenv-lock")
+    result = pytester.run(*command)
+    if pass_pipenv_lock:
+        # can't lock if `deps` are specified
+        assert result.ret != 0
+        return
+    assert result.ret == 0
+
+    result.stdout.no_fnmatch_line("py pipenvlock:.*")
+    result.stdout.no_fnmatch_line("py pipenv:.*")
+    result.stdout.fnmatch_lines(
+        [
+            "py installdeps: iterlist == 0.4",
+            "py run-test: commands[0] | pip freeze",
+            "iterlist==0.4",
+        ]
+    )
