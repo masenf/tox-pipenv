@@ -1,3 +1,3 @@
 """A pipenv plugin for tox."""
 
-__distribution__ = "tox-pipenv"
+__distribution__ = "tox-pipenv2"

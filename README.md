@@ -1,10 +1,14 @@
-# tox-pipenv
+# tox-pipenv2
 
-[![tox-pipenv on PyPI](https://img.shields.io/pypi/v/tox-pipenv.svg)](https://pypi.python.org/pypi/tox-pipenv)
+A reimplementation of [`tox-dev/tox-pipenv`](https://github.com/tox-dev/tox-pipenv) to address
+existing issues and rough edges encountered in a "strict-pinning" workflow.
+
+
+[![tox-pipenv on PyPI](https://img.shields.io/pypi/v/tox-pipenv2.svg)](https://pypi.python.org/pypi/tox-pipenv2)
 
 [![Test Package Compatibility](https://github.com/tox-dev/tox-pipenv/workflows/Test%20Package%20Compatibility/badge.svg)](https://github.com/tox-dev/tox-pipenv/actions)
 
-![PyPI downloads](https://img.shields.io/pypi/dw/tox-pipenv)
+![PyPI downloads](https://img.shields.io/pypi/dw/tox-pipenv2)
 
 A tox plugin to replace the default use of pip with Pipenv.
 
