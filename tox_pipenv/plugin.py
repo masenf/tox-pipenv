@@ -242,13 +242,19 @@ def tox_configure(config):
 
 
 def _should_skip(venv):
-    """Return True if this plugin should NOT proceed."""
+    """Return a reason why this plugin should NOT proceed."""
     if venv.envconfig.skip_pipenv:
-        return True
+        return "environment {!r} has `skip_pipenv = {}`".format(
+            venv.envconfig.envname,
+            venv.envconfig.skip_pipenv,
+        )
     pipfile_path, pipfile_lock_path = _toxinidir_pipfile(venv)
     if pipfile_path is None and pipfile_lock_path is None:
         # this plugin only operates when Pipfile is present
-        return True
+        return "neither `{}` nor `{}` are present.".format(
+            PIPFILE,
+            PIPFILE_LOCK_ENV.format(envname=venv.envconfig.envname),
+        )
     try:
         deps = venv.get_resolved_dependencies()
     except AttributeError:  # pragma: no cover
@@ -256,7 +262,7 @@ def _should_skip(venv):
         deps = venv._getresolvedeps()
     if deps:
         # this plugin only operates in the absense of testenv deps
-        return True
+        return "environment {!r} has `deps = ...`".format(venv.envconfig.envname)
 
 
 def _install_args(venv):
@@ -296,10 +302,15 @@ def _install_args(venv):
 
 @hookimpl
 def tox_testenv_install_deps(venv, action):
-    if _should_skip(venv):
+    g_config = venv.envconfig.config
+    skip_reason = _should_skip(venv)
+    if skip_reason:
+        if g_config.option.pipenv_lock:
+            raise ToxPipenvError(
+                "--pipenv-lock is specified, but {}".format(skip_reason)
+            )
         return
     pipfile_path, pipfile_lock_path = _clone_pipfile(venv)
-    g_config = venv.envconfig.config
     if g_config.option.pipenv_lock:
         # user requested explicit locking
         pipfile_path, pipfile_lock_path = _venv_pipenv_lock(venv, action)

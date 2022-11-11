@@ -31,7 +31,7 @@ def test_install_deps(
     venv.deps = deps
     exp_plugin_ran = not (deps or has_skip_pipenv) and (has_pipfile or has_pipfile_lock)
 
-    if exp_plugin_ran and has_pipenv_lock and not has_pipfile:
+    if has_pipenv_lock and (not exp_plugin_ran or not has_pipfile):
         with pytest.raises(tox_pipenv.plugin.ToxPipenvError):
             _ = tox_testenv_install_deps(venv, action)
         return
