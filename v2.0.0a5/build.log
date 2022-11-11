@@ -1,0 +1,32 @@
+GLOB sdist-make: /var/folders/5z/zrfn8mrs2yj5cckpwyry7btm0000gn/T/tmpduuqtxsx/setup.py
+docs create: /private/var/folders/5z/zrfn8mrs2yj5cckpwyry7btm0000gn/T/tmpduuqtxsx/.tox/docs
+docs installdeps: sphinx ~= 5.3.0, myst-parser ~= 0.18.1
+docs inst: /private/var/folders/5z/zrfn8mrs2yj5cckpwyry7btm0000gn/T/tmpduuqtxsx/.tox/.tmp/package/1/tox-pipenv2-2.0.0a5.zip
+docs installed: alabaster==0.7.12,Babel==2.11.0,certifi==2022.9.24,charset-normalizer==2.1.1,distlib==0.3.6,docutils==0.19,filelock==3.8.0,idna==3.4,imagesize==1.4.1,Jinja2==3.1.2,markdown-it-py==2.1.0,MarkupSafe==2.1.1,mdit-py-plugins==0.3.1,mdurl==0.1.2,myst-parser==0.18.1,packaging==21.3,pipenv==2022.11.5,platformdirs==2.5.3,pluggy==1.0.0,py==1.11.0,Pygments==2.13.0,pyparsing==3.0.9,pytz==2022.6,PyYAML==6.0,requests==2.28.1,six==1.16.0,snowballstemmer==2.2.0,Sphinx==5.3.0,sphinxcontrib-applehelp==1.0.2,sphinxcontrib-devhelp==1.0.2,sphinxcontrib-htmlhelp==2.0.0,sphinxcontrib-jsmath==1.0.1,sphinxcontrib-qthelp==1.0.3,sphinxcontrib-serializinghtml==1.1.5,tomli==2.0.1,tox==3.27.0,tox-pipenv2 @ file:///private/var/folders/5z/zrfn8mrs2yj5cckpwyry7btm0000gn/T/tmpduuqtxsx/.tox/.tmp/package/1/tox-pipenv2-2.0.0a5.zip,typing_extensions==4.4.0,urllib3==1.26.12,virtualenv==20.16.6,virtualenv-clone==0.5.7
+docs run-test-pre: PYTHONHASHSEED='2711926599'
+docs run-test: commands[0] | sphinx-build -b html source /Users/masen/code/tox-dev/tox-pipenv/v2.0.0a5
+Running Sphinx v5.3.0
+myst v0.18.1: MdParserConfig(commonmark_only=False, gfm_only=False, enable_extensions=[], disable_syntax=[], all_links_external=False, url_schemes=('http', 'https', 'mailto', 'ftp'), ref_domains=None, highlight_code_blocks=True, number_code_blocks=[], title_to_header=False, heading_anchors=None, heading_slug_func=None, footnote_transition=True, words_per_minute=200, sub_delimiters=('{', '}'), linkify_fuzzy_links=True, dmath_allow_labels=True, dmath_allow_space=True, dmath_allow_digits=True, dmath_double_inline=False, update_mathjax=True, mathjax_classes='tex2jax_process|mathjax_process|math|output_area')
+building [mo]: targets for 0 po files that are out of date
+building [html]: targets for 1 source files that are out of date
+updating environment: [new config] 1 added, 0 changed, 0 removed
+reading sources... [100%] index
+
+looking for now-outdated files... none found
+pickling environment... done
+checking consistency... done
+preparing documents... done
+writing output... [100%] index
+
+generating indices... genindex done
+writing additional pages... search done
+copying static files... done
+copying extra files... done
+dumping search index in English (code: en)... done
+dumping object inventory... done
+build succeeded.
+
+The HTML pages are in ../../../../../../../../Users/masen/code/tox-dev/tox-pipenv/v2.0.0a5.
+___________________________________ summary ____________________________________
+  docs: commands succeeded
+  congratulations :)
