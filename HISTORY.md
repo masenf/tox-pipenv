@@ -2,21 +2,19 @@
 
 ## 2.0.0 (2022-11-10)
 
-* Rewrite.
-  * Plugin no longer using `pipenv` to create virtual environments
-  * Plugin no longer using `pipenv` to run commands
-  * Only activate `pipenv` when Pipfile or `Pipfile.lock.{envname}` is present in `toxinidir`
-  * Do NOT activate `pipenv` when test environment specifies `deps`
-  * Automatically `pipenv sync` (from `Pipfile.lock.{envname}`, if present)
-    * Enable strict-pinning workflow with multiple python versions
-    * New tox CLI option: `--pipenv-lock` to explicitly (re)lock dependencies for multiple environments
-  * testenv ini-setting, `skip_pipenv`: opt-out of all `pipenv` operations for the environment
-  * Customize `pipenv` `install_deps` command:
-    * testenv ini-setting `pipenv_install_cmd` / `TOX_PIPENV_INSTALL_CMD`
-    * testenv ini-setting `pipenv_install_opts` / `TOX_PIPENV_INSTALL_OPTS`
-    * Overriding the install command is split between command and args
-    * Environment variables take precedence over testenv ini-setting
-  * Code restructuring for better modularity and readability
+* Plugin no longer using `pipenv` to create virtual environments
+* Plugin no longer using `pipenv` to run commands
+* Only activate `pipenv` when Pipfile or `Pipfile.lock.{envname}` is present in `toxinidir`
+* Do NOT activate `pipenv` when test environment specifies `deps`
+* Automatically pass `--ignore-pipfile` (use `Pipfile.lock.{envname}`, if present)
+  * Enable strict-pinning workflow with multiple python versions
+  * New tox CLI option: `--pipenv-update` to explicitly (re)lock dependencies for multiple environments
+* testenv ini-setting, `skip_pipenv`: opt-out of all `pipenv` operations for the environment
+* Customize `pipenv` `install_deps` command:
+  * testenv ini-setting `pipenv_install_opts` / `TOX_PIPENV_INSTALL_OPTS`
+  * Environment variables take precedence over testenv ini-setting
+* Code restructuring for better modularity and readability
+* 100% unit and integration test coverage
 
 ## 1.10.1 (2020-09-22)
 
