@@ -4,9 +4,9 @@
 
 * Plugin no longer using `pipenv` to create virtual environments
 * Plugin no longer using `pipenv` to run commands
-* Only activate `pipenv` when Pipfile or `Pipfile.lock.{envname}` is present in `toxinidir`
+* Only activate `pipenv` when `Pipfile`, `Pipfile_{envname}`, or `Pipfile_{envname}.lock` are present in `toxinidir`
 * Do NOT activate `pipenv` when test environment specifies `deps`
-* Automatically pass `--ignore-pipfile` (use `Pipfile.lock.{envname}`, if present)
+* Automatically pass `--ignore-pipfile` (use `Pipfile_{envname}.lock`, if present)
   * Enable strict-pinning workflow with multiple python versions
   * New tox CLI option: `--pipenv-update` to explicitly (re)lock dependencies for multiple environments
 * testenv ini-setting, `skip_pipenv`: opt-out of all `pipenv` operations for the environment

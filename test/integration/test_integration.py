@@ -72,7 +72,7 @@ def test_end_to_end(
     pytester.makefile(".ini", tox=tox_ini_content)
     command = [sys.executable, "-m", "tox"]
     if not use_pipfile_lock_env:
-        assert not (pytester.path / "Pipfile.lock.py").exists()
+        assert not (pytester.path / "Pipfile_py.lock").exists()
     if pass_pipenv_update:
         command.append("--pipenv-update")
     result = pytester.run(*command)
@@ -121,7 +121,7 @@ def test_end_to_end(
     else:
         result.stdout.no_fnmatch_line("iterlist==*")
     if pass_pipenv_update and not use_pipfile_lock_env:
-        new_lock_file = pytester.path / "Pipfile.lock.py"
+        new_lock_file = pytester.path / "Pipfile_py.lock"
         assert new_lock_file.exists()
         new_lock_file_contents = new_lock_file.read_text()
         assert new_lock_file_contents == PIPFILE_SIMPLE_LOCK

@@ -121,7 +121,7 @@ def has_pipfile(request, venv):
 @pytest.fixture(params=[True, False], ids=["has_Pipfile.lock", "no_Pipfile.lock"])
 def has_pipfile_lock(request, venv):
     if request.param:
-        venv._pipfile_lock = venv.session.config.toxinidir / "Pipfile.lock.{}".format(
+        venv._pipfile_lock = venv.session.config.toxinidir / "Pipfile_{}.lock".format(
             venv.envconfig.envname
         )
         venv._pipfile_lock.ensure()

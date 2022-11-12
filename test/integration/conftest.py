@@ -9,12 +9,15 @@ def tox_testenv_passenv_all(monkeypatch):
 
 
 @pytest.fixture(
-    params=[True, False],
-    ids=["Pipfile", "no_Pipfile"],
+    params=[True, "_py", False],
+    ids=["Pipfile", "Pipfile_py", "no_Pipfile"],
 )
 def use_pipfile(request, pytester):
     if request.param:
-        pytester.makefile("", Pipfile=PIPFILE_SIMPLE)
+        pipfile_name = "Pipfile"
+        if not isinstance(request.param, bool):
+            pipfile_name += request.param
+        pytester.makefile("", **{pipfile_name: PIPFILE_SIMPLE})
     return request.param
 
 
@@ -24,7 +27,7 @@ def use_pipfile(request, pytester):
 )
 def use_pipfile_lock_env(request, pytester):
     if request.param:
-        pytester.makefile(".lock.py", Pipfile=PIPFILE_SIMPLE_LOCK)
+        pytester.makefile(".lock", Pipfile_py=PIPFILE_SIMPLE_LOCK)
     return request.param
 
 

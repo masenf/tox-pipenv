@@ -99,7 +99,7 @@ def test_pipfile_non_venv_lock(venv, mocker, action, lock_file_name):
     "touch_file_name",
     (
         "Pipfile",
-        "Pipfile.lock.mock",
+        "Pipfile_mock.lock",
     ),
 )
 @pytest.mark.parametrize(

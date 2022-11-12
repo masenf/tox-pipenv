@@ -21,7 +21,7 @@ DEFAULT_PIPENV_ENV = {
 DEFAULT_PIPENV_INSTALL_OPTS = tuple()
 ENV_PIPENV_INSTALL_OPTS = "TOX_PIPENV_INSTALL_OPTS"
 ENV_PIPENV_PIPFILE = "PIPENV_PIPFILE"
-PIPFILE_PARENT = PIPFILE = PIPFILE_LOCK = PIPFILE_LOCK_ENV = None
+PIPFILE_PARENT = PIPFILE = PIPFILE_FALLBACK = PIPFILE_LOCK = PIPFILE_LOCK_ENV = None
 
 
 class ToxPipenvError(Exception):
@@ -29,17 +29,18 @@ class ToxPipenvError(Exception):
 
 
 def _init_global_pipfile(pipenv_pipfile_str):
-    global PIPFILE_PARENT, PIPFILE, PIPFILE_LOCK, PIPFILE_LOCK_ENV
+    global PIPFILE_PARENT, PIPFILE, PIPFILE_FALLBACK, PIPFILE_LOCK, PIPFILE_LOCK_ENV
 
     if pipenv_pipfile_str is not None:
         pipenv_pipfile = py.path.local(pipenv_pipfile_str)
         PIPFILE_PARENT = pipenv_pipfile.parts()[-2]
-        PIPFILE = pipenv_pipfile.basename
+        PIPFILE = PIPFILE_FALLBACK = pipenv_pipfile.basename
     else:
         PIPFILE_PARENT = None
-        PIPFILE = "Pipfile"
-    PIPFILE_LOCK = PIPFILE + ".lock"
-    PIPFILE_LOCK_ENV = PIPFILE_LOCK + ".{envname}"
+        PIPFILE_FALLBACK = "Pipfile"
+        PIPFILE = PIPFILE_FALLBACK + "_{envname}"
+    PIPFILE_LOCK = PIPFILE_FALLBACK + ".lock"
+    PIPFILE_LOCK_ENV = PIPFILE + ".lock"
 
 
 def _init_global_pipfile_from_env_var():
@@ -47,6 +48,12 @@ def _init_global_pipfile_from_env_var():
 
 
 _init_global_pipfile_from_env_var()
+
+
+def _try_pipfile_names(venv):
+    """Iterate possible Pipfile names for the current venv."""
+    yield PIPFILE.format(envname=venv.envconfig.envname)
+    yield PIPFILE_FALLBACK
 
 
 def _pipfile_if_exists(venv, in_path=None, lock_file_fmt=None):
@@ -64,12 +71,15 @@ def _pipfile_if_exists(venv, in_path=None, lock_file_fmt=None):
         in_path = venv.path
     if lock_file_fmt is None:
         lock_file_fmt = PIPFILE_LOCK
-    pipfile_path = in_path.join(PIPFILE)
     pipfile_lock_path = in_path.join(
         lock_file_fmt.format(envname=venv.envconfig.envname),
     )
-    if not pipfile_path.exists():
-        pipfile_path = None
+    for pipfile_name in _try_pipfile_names(venv):
+        pipfile_path = in_path.join(pipfile_name)
+        if not pipfile_path.exists():
+            pipfile_path = None
+        else:
+            break
     if not pipfile_lock_path.exists():
         pipfile_lock_path = None
     return pipfile_path, pipfile_lock_path
@@ -121,7 +131,7 @@ def _clone_pipfile(venv):
 
     venv_pipfile_path = None
     if root_pipfile_path is not None:
-        venv_pipfile_path = venv.path.join(PIPFILE)
+        venv_pipfile_path = venv.path.join(PIPFILE_FALLBACK)
         root_pipfile_path.copy(venv_pipfile_path)
     venv_pipfile_lock_path = None
     if root_pipfile_lock_path is not None:
@@ -144,7 +154,7 @@ def _pipenv_env(venv, pipfile_path=None):
     if pipfile_path is None:
         raise ToxPipenvError(
             "Unable to generate environment variables, {} not found for {}".format(
-                PIPFILE,
+                PIPFILE_FALLBACK,
                 venv.envconfig.envname,
             )
         )
@@ -223,10 +233,10 @@ def _should_skip(venv):
     pipfile_path, pipfile_lock_path = _toxinidir_pipfile(venv)
     if pipfile_path is None and pipfile_lock_path is None:
         # this plugin only operates when Pipfile is present
-        return "neither `{}` nor `{}` are present.".format(
-            PIPFILE,
+        tried_files = list(_try_pipfile_names(venv)) + [
             PIPFILE_LOCK_ENV.format(envname=venv.envconfig.envname),
-        )
+        ]
+        return "none of {!r} are present.".format(tried_files)
     try:
         deps = venv.get_resolved_dependencies()
     except AttributeError:  # pragma: no cover
@@ -247,7 +257,7 @@ def _install_args(venv):
     pipfile_path, pipfile_lock_path = _venv_pipfile(venv)
     if pipfile_path is None:
         # we need an actual Pipfile, even if its empty
-        pipfile_path = pipfile_lock_path.parts()[-2] / PIPFILE
+        pipfile_path = pipfile_lock_path.parts()[-2] / PIPFILE_FALLBACK
         pipfile_path.ensure()
 
     args_str = os.environ.get(
@@ -276,9 +286,9 @@ def _install_args(venv):
         toxinidir_pipfile_path, _ = _toxinidir_pipfile(venv)
         if toxinidir_pipfile_path is None:
             raise ToxPipenvError(
-                "Unable to update for {}, no {} was found in {}".format(
+                "Unable to update for {}, none of {} found in {}".format(
                     venv.envconfig.envname,
-                    PIPFILE,
+                    set(_try_pipfile_names(venv)),
                     g_config.toxinidir,
                 )
             )

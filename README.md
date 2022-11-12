@@ -39,15 +39,15 @@ For tox environments without `deps`, this plugin will automatically use
 Environments that specify any `deps` will be _ignored_ by this plugin, as
 if `skip_pipenv = true` were set.
 
-### `{toxinidir}/Pipfile.lock.{envname}`
+### `{toxinidir}/Pipfile_{envname}.lock`
 
-If a lock file exists that matches the current tox environment name, this
-plugin will use `pipenv sync` to apply the lockfile into the tox virtualenv.
+If a lock file exists that matches the current tox environment name, this plugin will
+use `pipenv install --ignore-pipfile` to apply the lockfile into the tox virtualenv.
 
 # Regenerating the lock file
 
 When using lock files ("strict pinning"), the per-environment
-`Pipfile.lock.{envname}` must be regenerated whenever `Pipfile` changes or when
+`Pipfile_{envname}.lock` must be regenerated whenever `Pipfile` changes or when
 updating dependency pins.
 
 ```
@@ -55,7 +55,7 @@ tox --recreate --pipenv-update
 ```
 
 Can be used to have this plugin explicitly re-lock the dependencies for each
-environment and copy the result to `{toxinidir}/Pipfile.lock.{envname}`.
+environment and copy the result to `{toxinidir}/Pipfile_{envname}.lock`.
 
 Subsequent tox invocations without `--pipenv-update` will install the
 dependencies specified in the lockfile associated with the environment.
@@ -77,8 +77,8 @@ _string_. Specified per `[testenv]` section.
 
 Override the args passed to `pipenv` during the `install_deps` stage.
 
-By default, the plugin will use `install --ignore-pipfile` if a `Pipfile.lock.{envname}` file is present
-and `install` when only a `Pipfile` is available.
+By default, the plugin will use `install --ignore-pipfile` if a `Pipfile_{envname}.lock`
+file is present and `install` when only a `Pipfile` is available.
 
 If this option is specified, the plugin will not modify or augment the argument list,
 however if `--pipenv-update` is specified and `update` is not present in the opts, an
@@ -111,8 +111,8 @@ virtualenv for the test environment.
 
 Any test environment that specifies `deps` will NOT use the `Pipfile`.
 
-Similarly if the project does not contain a `Pipfile` or
-`Pipfile.lock.{envname}`, then `pipenv` will not be used at all.
+Similarly if the project does not contain a `Pipfile`, `Pipfile_{envname}`, or
+`Pipfile_{envname}.lock`, then `pipenv` will not be used at all.
 
 To migrate from explicit deps or requirements.txt, use `pipenv install -r
 path/to/requirements.txt` to create a new `Pipfile` and edit it accordingly.
@@ -167,7 +167,7 @@ pytest-mock = "*"
 tox --recreate --pipenv-update --notest
 ```
 
-Look for the new `Pipfile.lock.py27` and `Pipfile.lock.py36` files created in
+Look for the new `Pipfile_py27.lock` and `Pipfile_py36.lock` files created in
 the `tox.ini` directory. These may be checked in to version control for
 repeatable deployment of locked dependencies.
 
@@ -182,16 +182,23 @@ is in a virtual environment, system environment or user environment.
 Starting with tox-3.2.0, `tox-pipenv` may be specified in the `[tox]`
 `requires` list and automatically provisioned, see examples above.
 
-## Is user expected to create `Pipfile` and `Pipfile.lock.{envname}` before executing `tox` with this plugin?
+## Is user expected to create `Pipfile` and `Pipfile_{envname}.lock` before executing `tox` with this plugin?
 
 ### Yes
 
-In the absense of `Pipfile` in `toxinidir`, this plugin won't do anything!
+In the absense of `Pipfile` or `Pipfile_{envname}` in `toxinidir`, this plugin won't do
+anything!
+
+### Wait? `Pipfile_{envname}`?
+
+For tox environments with radically different dependencies,
+such as `py27` or `static`. The dependencies for these environments
+can be managed via `pipenv` in separate files.
 
 ### Optional lock file
 
-If a lock file associated with a particular environment exists in `toxinidir`,
-then the plugin will use `pipenv sync` to install the locked dependencies.
+If a lock file associated with a particular environment exists in `toxinidir`, then the
+plugin will use `pipenv install --ignore-pipfile` to install the locked dependencies.
 
 Without a lock file, `pipenv install` is used to install the latest versions
 possible from the Pipfile specification.
@@ -201,7 +208,10 @@ possible from the Pipfile specification.
 It doesn't make sense to share a lock file between environments, so an
 unqualified lock file is not used by this plugin.
 
-#### Is `Pipfile.lock.{envname}` expected to be under source control?
+If you _really_ want to use it, then explicitly set `PIPENV_PIPFILE=Pipfile`
+and the plugin will use `Pipfile.lock`, for better or worse.
+
+#### Is `Pipfile_{envname}.lock` expected to be under source control?
 
 According to `pipenv` documentation, `Pipfile.lock` is not recommended under
 source control if it is going to be used under multiple Python versions.
