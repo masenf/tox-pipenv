@@ -30,6 +30,19 @@ TOX_INI_DEPS_SIMPLE = dedent(
 )
 
 
+TOX_INI_SKIP_PIPENV = dedent(
+    """
+    [tox]
+    skipsdist = True
+    envlist = py
+
+    [testenv]
+    skip_pipenv = true
+    commands_pre = pip install iterlist==0.4
+    commands = pip freeze""",
+)
+
+
 PIPFILE_SIMPLE = dedent(
     """
     [[source]]
@@ -123,6 +136,9 @@ def pipenv_install_cmd(request, monkeypatch):
     return request.param
 
 
+@pytest.mark.parametrize(
+    "pip_pre", [True, False], ids=["pip_pre=True", "pip_pre=False"]
+)
 def test_end_to_end(
     pytester,
     use_Pipfile,
@@ -130,9 +146,13 @@ def test_end_to_end(
     pass_pipenv_update,
     pipenv_install_cmd,
     pipenv_install_opts,
+    pip_pre,
 ):
     """Call tox and validate the `pip freeze` output."""
-    pytester.makefile(".ini", tox=TOX_INI_PIPFILE_SIMPLE)
+    tox_ini_content = TOX_INI_PIPFILE_SIMPLE
+    if pip_pre:
+        tox_ini_content += "\npip_pre = true"
+    pytester.makefile(".ini", tox=tox_ini_content)
     command = [sys.executable, "-m", "tox"]
     if not use_Pipfile_lock_env:
         assert not (pytester.path / "Pipfile.lock.py").exists()
@@ -189,25 +209,59 @@ def test_end_to_end(
         assert new_lock_file_contents == PIPFILE_SIMPLE_LOCK
 
 
-def test_end_to_end_deps(pytester, use_Pipfile, pass_pipenv_update):
+@pytest.mark.parametrize(
+    "tox_ini",
+    (
+        TOX_INI_DEPS_SIMPLE,
+        TOX_INI_SKIP_PIPENV,
+    ),
+    ids=("deps", "skip_pipenv"),
+)
+def test_end_to_end_deps(pytester, use_Pipfile, pass_pipenv_update, tox_ini):
     """Call tox with deps= specified and validate the `pip freeze` output."""
-    pytester.makefile(".ini", tox=TOX_INI_DEPS_SIMPLE)
+    pytester.makefile(".ini", tox=tox_ini)
     command = [sys.executable, "-m", "tox"]
     if pass_pipenv_update:
         command.append("--pipenv-update")
     result = pytester.run(*command)
     if pass_pipenv_update:
-        # can't lock if `deps` are specified
+        # can't lock if `deps` are specified or skip_pipenv = true
         assert result.ret != 0
         return
     assert result.ret == 0
 
-    result.stdout.no_fnmatch_line("py pipenvlock:.*")
     result.stdout.no_fnmatch_line("py pipenv:.*")
+    if "deps" in tox_ini:
+        result.stdout.fnmatch_lines(["py installdeps: iterlist == 0.4"])
     result.stdout.fnmatch_lines(
         [
-            "py installdeps: iterlist == 0.4",
             "py run-test: commands[0] | pip freeze",
             "iterlist==0.4",
         ]
     )
+
+
+def test_alt_pipfile(pytester, monkeypatch):
+    pytester.makefile(".ini", tox=TOX_INI_PIPFILE_SIMPLE)
+    pytester.makefile("", Poopfile=PIPFILE_SIMPLE)
+    monkeypatch.setenv("PIPENV_PIPFILE", "Poopfile")
+    command = [sys.executable, "-m", "tox"]
+    result = pytester.run(*command)
+    assert result.ret == 0
+    exp_path = pytester.path / ".tox" / "py" / "Poopfile"
+    result.stdout.fnmatch_lines(
+        [
+            "py pipenv: <['install'] {}>".format(exp_path),
+            "py run-test: commands[0] | pip freeze",
+            "iterlist==0.4",
+        ],
+    )
+
+
+def test_no_deps_or_pipfile(pytester):
+    pytester.makefile(".ini", tox=TOX_INI_PIPFILE_SIMPLE)
+    command = [sys.executable, "-m", "tox"]
+    result = pytester.run(*command)
+    assert result.ret == 0
+    result.stdout.no_fnmatch_line("iterlist==*")
+    result.stdout.no_fnmatch_line("py pipenv:*")
