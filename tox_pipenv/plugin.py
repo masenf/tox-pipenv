@@ -1,185 +1,347 @@
+"""
+Use `pipenv` to install dependencies.
+
+Tox plugin overrides `install_deps` action to install dependencies
+from a `Pipfile` into the current test environment.
+"""
+import shlex
 import sys
 import os
-import tox
+
+import py.path
 from tox import hookimpl
-from tox import reporter
-from tox.venv import cleanup_for_venv
-import contextlib
 
 
-def _init_pipenv_environ():
-    os.environ["PIPENV_ACTIVE"] = "1"
+DEFAULT_PIPENV_ENV = {
+    "PIPENV_YES": "1",  # Answer yes on recreation of virtual env
+    "PIPENV_VENV_IN_PROJECT": "1",  # don't use pew
+    "PIPENV_VERBOSITY": "-1",  # suppress existing venv warning
+    "PIPENV_NOSPIN": "1",  # suppress terminal animations
+}
+DEFAULT_PIPENV_INSTALL_OPTS = tuple()
+ENV_PIPENV_INSTALL_OPTS = "TOX_PIPENV_INSTALL_OPTS"
+ENV_PIPENV_PIPFILE = "PIPENV_PIPFILE"
+PIPFILE_PARENT = PIPFILE = PIPFILE_FALLBACK = PIPFILE_LOCK = PIPFILE_LOCK_ENV = None
 
-    # Ignore host virtual env
-    os.environ["PIPENV_IGNORE_VIRTUALENVS"] = "1"
 
-    # Answer yes on recreation of virtual env
-    os.environ["PIPENV_YES"] = "1"
+class ToxPipenvError(Exception):
+    """Raised when the plugin encounters some error."""
 
-    # don't use pew
-    os.environ["PIPENV_VENV_IN_PROJECT"] = "1"
+
+def _init_global_pipfile(pipenv_pipfile_str):
+    global PIPFILE_PARENT, PIPFILE, PIPFILE_FALLBACK, PIPFILE_LOCK, PIPFILE_LOCK_ENV
+
+    if pipenv_pipfile_str is not None:
+        pipenv_pipfile = py.path.local(pipenv_pipfile_str)
+        PIPFILE_PARENT = pipenv_pipfile.parts()[-2]
+        PIPFILE = PIPFILE_FALLBACK = pipenv_pipfile.basename
+    else:
+        PIPFILE_PARENT = None
+        PIPFILE_FALLBACK = "Pipfile"
+        PIPFILE = PIPFILE_FALLBACK + "_{envname}"
+    PIPFILE_LOCK = PIPFILE_FALLBACK + ".lock"
+    PIPFILE_LOCK_ENV = PIPFILE + ".lock"
+
+
+def _init_global_pipfile_from_env_var():
+    _init_global_pipfile(pipenv_pipfile_str=os.environ.get(ENV_PIPENV_PIPFILE) or None)
+
+
+_init_global_pipfile_from_env_var()
+
+
+def _try_pipfile_names(venv):
+    """Iterate possible Pipfile names for the current venv."""
+    yield PIPFILE.format(envname=venv.envconfig.envname)
+    yield PIPFILE_FALLBACK
+
+
+def _pipfile_if_exists(venv, in_path=None, lock_file_fmt=None):
+    """
+    Get Pipfile and Pipfile.lock paths for the given venv under in_path.
+
+    If in_path is not given, default to `venv.path`.
+
+    Return tuple of (pipfile_path, pipfile_lock_path).
+
+    If either of these values are None, then the corresponding file did not
+    exist in in_path.
+    """
+    if in_path is None:
+        in_path = venv.path
+    if lock_file_fmt is None:
+        lock_file_fmt = PIPFILE_LOCK
+    pipfile_lock_path = in_path.join(
+        lock_file_fmt.format(envname=venv.envconfig.envname),
+    )
+    for pipfile_name in _try_pipfile_names(venv):
+        pipfile_path = in_path.join(pipfile_name)
+        if not pipfile_path.exists():
+            pipfile_path = None
+        else:
+            break
+    if not pipfile_lock_path.exists():
+        pipfile_lock_path = None
+    return pipfile_path, pipfile_lock_path
+
+
+def _toxinidir_pipfile(venv):
+    """
+    Get Pipfile and Pipfile.lock.{envconfig} paths in the project directory.
+
+    If PIPENV_PIPFILE is set, look for the path's basename and derived lock
+    file in the parent directory.
+
+    Return tuple of (pipfile_path, pipfile_lock_path).
+    """
+    config = getattr(venv, "session", venv.envconfig).config
+    return _pipfile_if_exists(
+        venv,
+        in_path=PIPFILE_PARENT or config.toxinidir,
+        lock_file_fmt=PIPFILE_LOCK_ENV,
+    )
+
+
+def _venv_pipfile(venv):
+    """
+    Get Pipfile and Pipfile.lock paths in the given venv.
+
+    Return tuple of (pipfile_path, pipfile_lock_path).
+    """
+    return _pipfile_if_exists(venv)
 
 
 def _clone_pipfile(venv):
-    if hasattr(venv, 'session'):
-        root_pipfile_path = venv.session.config.toxinidir.join("Pipfile")
-    else:
-        root_pipfile_path = venv.envconfig.config.toxinidir.join("Pipfile")
+    """
+    Copy project Pipfile and env-specific Pipfile.lock into venv.
+
+    This function is called during tox_testenv_install_deps to create an
+    isolated copy of the Pipfile and lock file, in case any commands modify it
+    in the course of environment creation.
+
+    Return tuple of (pipfile_path, pipfile_lock_path).
+
+    If either of these values are None, then the corresponding file did not
+    exist in toxinidir.
+    """
+    root_pipfile_path, root_pipfile_lock_path = _toxinidir_pipfile(venv)
 
     # venv path may not have been created yet
-    venv.path.ensure(dir=1)
+    venv.path.ensure(dir=True)
 
-    venv_pipfile_path = venv.path.join("Pipfile")
-    if not os.path.exists(str(root_pipfile_path)):
-        with open(str(root_pipfile_path), "a"):
-            os.utime(str(root_pipfile_path), None)
-    if not venv_pipfile_path.check():
+    venv_pipfile_path = None
+    if root_pipfile_path is not None:
+        venv_pipfile_path = venv.path.join(PIPFILE_FALLBACK)
         root_pipfile_path.copy(venv_pipfile_path)
-    return venv_pipfile_path
+    venv_pipfile_lock_path = None
+    if root_pipfile_lock_path is not None:
+        venv_pipfile_lock_path = venv.path.join(PIPFILE_LOCK)
+        root_pipfile_lock_path.copy(venv_pipfile_lock_path)
+    return venv_pipfile_path, venv_pipfile_lock_path
 
 
-@contextlib.contextmanager
-def wrap_pipenv_environment(venv, pipfile_path):
-    old_pipfile = os.environ.get("PIPENV_PIPFILE", None)
-    os.environ["PIPENV_PIPFILE"] = str(pipfile_path)
-    old_pipvenv = os.environ.get("PIPENV_VIRTUALENV", None)
-    os.environ["PIPENV_VIRTUALENV"] = os.path.join(str(venv.path))
-    old_venv = os.environ.get("VIRTUAL_ENV", None)
-    os.environ["VIRTUAL_ENV"] = os.path.join(str(venv.path))
-    yield
-    if old_pipfile:
-        os.environ["PIPENV_PIPFILE"] = old_pipfile
-    if old_pipvenv:
-        os.environ["PIPENV_VIRTUALENV"] = old_pipvenv
-    if old_venv:
-        os.environ["VIRTUAL_ENV"] = old_venv
+def _basepath(venv):
+    """Get basepath for the venv and ensure it exists."""
+    basepath = venv.path.dirpath()
+    basepath.ensure(dir=True)
+    return basepath
+
+
+def _pipenv_env(venv, pipfile_path=None):
+    """Return environment variables for running `pipenv`."""
+    if pipfile_path is None:
+        pipfile_path, _ = _venv_pipfile(venv)
+    if pipfile_path is None:
+        raise ToxPipenvError(
+            "Unable to generate environment variables, {} not found for {}".format(
+                PIPFILE_FALLBACK,
+                venv.envconfig.envname,
+            )
+        )
+    env = DEFAULT_PIPENV_ENV.copy()
+    env.update(os.environ)
+    env["VIRTUAL_ENV"] = str(venv.path)
+    env["PIPENV_PIPFILE"] = str(pipfile_path)
+    return env
+
+
+def _pipenv_command(venv, args, action, **kwargs):
+    """
+    Execute `pipenv` in the given venv.
+
+    Additional kwargs are passed to venv._pcall.
+
+    If kwarg "env" is specified, it will be combined with and override the
+    os.environ and default _pipenv_env values.
+    """
+    env = _pipenv_env(venv)
+    kwarg_env = kwargs.pop("env", {})
+    env.update(kwarg_env)
+    return venv._pcall(
+        [sys.executable, "-m", "pipenv"] + list(args),
+        cwd=kwargs.pop("cwd", _basepath(venv)),
+        action=action,
+        env=env,
+    )
 
 
 @hookimpl
-def tox_testenv_create(venv, action):
-    _init_pipenv_environ()
+def tox_addoption(parser):
+    parser.add_argument(
+        "--pipenv-update",
+        action="store_true",
+        default=False,
+        help="Run `pipenv update` and copy resulting Pipfile.lock into {toxinidir}",
+    )
+    parser.add_testenv_attribute(
+        "skip_pipenv",
+        type="bool",
+        default=False,
+        help=(
+            "If true, this plugin will not take any pipenv-related actions for "
+            "the given environment. Useful for performing `pipenv` commands "
+            "directly or specifying an environment without `deps` in a project "
+            "that uses Pipfile."
+        ),
+    )
+    parser.add_testenv_attribute(
+        "pipenv_install_opts",
+        type="string",
+        default=None,
+        help=(
+            "Override the opts passed to the install command. "
+            "(default: {}) (var: {})".format(
+                DEFAULT_PIPENV_INSTALL_OPTS,
+                ENV_PIPENV_INSTALL_OPTS,
+            )
+        ),
+    )
 
-    config_interpreter = venv.getsupportedinterpreter()
-    args = [sys.executable, "-m", "pipenv"]
-    if venv.envconfig.sitepackages:
-        args.append("--site-packages")
 
-    args.extend(["--python", str(config_interpreter)])
+@hookimpl
+def tox_configure(config):
+    _init_global_pipfile_from_env_var()
 
-    if hasattr(venv.envconfig, 'make_emptydir'):
-        venv.envconfig.make_emptydir(venv.path)
+
+def _should_skip(venv):
+    """Return a reason why this plugin should NOT proceed."""
+    if venv.envconfig.skip_pipenv:
+        return "environment {!r} has `skip_pipenv = {}`".format(
+            venv.envconfig.envname,
+            venv.envconfig.skip_pipenv,
+        )
+    pipfile_path, pipfile_lock_path = _toxinidir_pipfile(venv)
+    if pipfile_path is None and pipfile_lock_path is None:
+        # this plugin only operates when Pipfile is present
+        tried_files = list(_try_pipfile_names(venv)) + [
+            PIPFILE_LOCK_ENV.format(envname=venv.envconfig.envname),
+        ]
+        return "none of {!r} are present.".format(tried_files)
+    try:
+        deps = venv.get_resolved_dependencies()
+    except AttributeError:  # pragma: no cover
+        # _getresolvedeps was deprecated on tox 3.7.0 in favor of get_resolved_dependencies
+        deps = venv._getresolvedeps()
+    if deps:
+        # this plugin only operates in the absense of testenv deps
+        return "environment {!r} has `deps = ...`".format(venv.envconfig.envname)
+
+
+def _install_args(venv):
+    """
+    Get the args passed `pipenv` for install_deps.
+
+    If no user supplied args are available, return None.
+    """
+    g_config = venv.envconfig.config
+    pipfile_path, pipfile_lock_path = _venv_pipfile(venv)
+    if pipfile_path is None:
+        # we need an actual Pipfile, even if its empty
+        pipfile_path = pipfile_lock_path.parts()[-2] / PIPFILE_FALLBACK
+        pipfile_path.ensure()
+
+    args_str = os.environ.get(
+        ENV_PIPENV_INSTALL_OPTS,
+        venv.envconfig.pipenv_install_opts,
+    )
+    if args_str:
+        args = list(shlex.split(args_str))
+        install_cmd, args = args[0], args[1:]
     else:
-        # tox 3.8.0 removed make_emptydir, See tox #1219
-        cleanup_for_venv(venv)
+        install_cmd, args = None, list(DEFAULT_PIPENV_INSTALL_OPTS)
 
-    basepath = venv.path.dirpath()
-    basepath.ensure(dir=1)
-    pipfile_path = _clone_pipfile(venv)
+    if install_cmd is None:
+        install_cmd = "install"
+        if g_config.option.pipenv_update:
+            install_cmd = "update"
+        elif pipfile_lock_path is not None:
+            # the project provides a lockfile for this environment, so install
+            # from the lockfile by ignoring the Pipfile
+            args.append("--ignore-pipfile")
+        if venv.envconfig.pip_pre:
+            args.append("--pre")
 
-    with wrap_pipenv_environment(venv, pipfile_path):
-        venv._pcall(args, venv=False, action=action, cwd=basepath)
-
-    # Return non-None to indicate the plugin has completed
-    return True
+    # make sure update is possible
+    if install_cmd == "update":
+        toxinidir_pipfile_path, _ = _toxinidir_pipfile(venv)
+        if toxinidir_pipfile_path is None:
+            raise ToxPipenvError(
+                "Unable to update for {}, none of {} found in {}".format(
+                    venv.envconfig.envname,
+                    set(_try_pipfile_names(venv)),
+                    g_config.toxinidir,
+                )
+            )
+    elif g_config.option.pipenv_update:
+        raise ToxPipenvError(
+            "--pipenv-update cannot be specified with pipenv_install_opts "
+            "({})".format(args_str)
+        )
+    return [install_cmd] + args
 
 
 @hookimpl
 def tox_testenv_install_deps(venv, action):
-    _init_pipenv_environ()
-    # TODO: If skip_install set, check existence of venv Pipfile
-    try:
-        deps = venv._getresolvedeps()
-    except AttributeError:
-        # _getresolvedeps was deprecated on tox 3.7.0 in favor of get_resolved_dependencies
-        deps = venv.get_resolved_dependencies()
-    basepath = venv.path.dirpath()
-    basepath.ensure(dir=1)
-    pipfile_path = _clone_pipfile(venv)
-    args = [sys.executable, "-m", "pipenv", "install", "--dev"]
-    if venv.envconfig.pip_pre:
-        args.append('--pre')
-    with wrap_pipenv_environment(venv, pipfile_path):
-        if deps:
-            action.setactivity("installdeps", "%s" % ",".join(list(map(str, deps))))
-            args += list(map(str, deps))
-        else:
-            action.setactivity("installdeps", "[]")
-        venv._pcall(args, venv=False, action=action, cwd=basepath)
-
-    # Return non-None to indicate the plugin has completed
-    return True
-
-
-@hookimpl
-def tox_runtest(venv, redirect):
-    _init_pipenv_environ()
-    pipfile_path = _clone_pipfile(venv)
-
-    action = venv.new_action("runtests")
-
-    with wrap_pipenv_environment(venv, pipfile_path):
-        action.setactivity(
-            "runtests", "PYTHONHASHSEED=%r" % os.environ.get("PYTHONHASHSEED")
+    g_config = venv.envconfig.config
+    skip_reason = _should_skip(venv)
+    if skip_reason:
+        if g_config.option.pipenv_update:
+            raise ToxPipenvError(
+                "--pipenv-update is specified, but {}".format(skip_reason)
+            )
+        return
+    pipfile_path, pipfile_lock_path = _clone_pipfile(venv)
+    install_args = _install_args(venv)
+    action.setactivity(
+        "pipenv",
+        "<{} {}>".format(
+            install_args,
+            pipfile_lock_path if "--ignore-pipfile" in install_args else pipfile_path,
+        ),
+    )
+    _pipenv_command(
+        venv,
+        args=install_args,
+        action=action,
+    )
+    if g_config.option.pipenv_update:
+        # copy the lock file back to project dir to be committed
+        _, pipfile_lock_path = _venv_pipfile(venv)
+        project_dir = PIPFILE_PARENT or g_config.toxinidir
+        pipfile_lock_path.copy(
+            project_dir
+            / PIPFILE_LOCK_ENV.format(
+                envname=venv.envconfig.envname,
+            ),
         )
-        for i, argv in enumerate(venv.envconfig.commands):
-            # have to make strings as _pcall changes argv[0] to a local()
-            # happens if the same environment is invoked twice
-            cwd = venv.envconfig.changedir
-            message = "commands[%s] | %s" % (i, " ".join([str(x) for x in argv]))
-            action.setactivity("runtests", message)
-            # check to see if we need to ignore the return code
-            # if so, we need to alter the command line arguments
-            if argv[0].startswith("-"):
-                ignore_ret = True
-                if argv[0] == "-":
-                    del argv[0]
-                else:
-                    argv[0] = argv[0].lstrip("-")
-            else:
-                ignore_ret = False
-            args = [sys.executable, "-m", "pipenv", "run"] + argv
-            try:
-                venv._pcall(
-                    args,
-                    venv=False,
-                    cwd=cwd,
-                    action=action,
-                    redirect=redirect,
-                    ignore_ret=ignore_ret
-                )
-            except tox.exception.InvocationError as err:
-                if venv.envconfig.ignore_outcome:
-                    reporter.warning(
-                        "command failed but result from testenv is ignored\n"
-                        "  cmd: %s" % (str(err),)
-                    )
-                    venv.status = "ignored failed command"
-                    continue  # keep processing commands
-
-                reporter.error(str(err))
-                venv.status = "commands failed"
-                if not venv.envconfig.ignore_errors:
-                    break  # Don't process remaining commands
-            except KeyboardInterrupt:
-                venv.status = "keyboardinterrupt"
-                reporter.error(venv.status)
-                raise
-
+    # Return True to stop further plugins from installing deps
     return True
 
 
 @hookimpl
 def tox_runenvreport(venv, action):
-    _init_pipenv_environ()
-    pipfile_path = _clone_pipfile(venv)
-
-    basepath = venv.path.dirpath()
-    basepath.ensure(dir=1)
-    with wrap_pipenv_environment(venv, pipfile_path):
-        action.setactivity("runenvreport", "")
-        # call pipenv graph
-        args = [sys.executable, "-m", "pipenv", "graph"]
-        output = venv._pcall(args, venv=False, action=action, cwd=basepath)
-
-        output = output.split("\n")
+    if _should_skip(venv):
+        return
+    action.setactivity("runenvreport", "")
+    output = _pipenv_command(venv, args=["graph"], action=action).splitlines()
     return output
