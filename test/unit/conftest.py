@@ -1,53 +1,78 @@
 import subprocess
 import uuid
 
+import attr
 import pytest
 
 import tox_pipenv.plugin
 
 
+@attr.s
 class MockOption(object):
-    def __init__(self):
-        self.pipenv_update = False
+    pipenv_update = attr.ib(default=False)
 
 
+@attr.s
 class MockConfig(object):
-    def __init__(self, tmpdir):
-        self._tmpdir = tmpdir
-        self.option = MockOption()
-        self.toxinidir = tmpdir / "tox-ini-dir"
-        self.toxinidir.ensure(dir=True)
+    _tmpdir = attr.ib()
+    option = attr.ib(factory=MockOption)
+    toxinidir = attr.ib()
+
+    @toxinidir.default
+    def _toxinitdir_default(self):
+        toxinidir = self._tmpdir / "tox-ini-dir"
+        toxinidir.ensure(dir=True)
+        return toxinidir
 
 
+@attr.s
 class MockEnvironmentConfig(object):
-    def __init__(self, tmpdir, config):
-        self.config = config
-        self.envname = "mock"
-        self.envdir = tmpdir / "dot-tox" / self.envname
-        self.envdir.ensure(dir=True)
-        self.sitepackages = False
-        self.pip_pre = False
-        self.skip_pipenv = False
-        self.pipenv_install_opts = None
-        self.pipenv_install_cmd = None
+    _tmpdir = attr.ib()
+    config = attr.ib()
+    envname = attr.ib(default="mock")
+    envdir = attr.ib()
+    sitepackages = attr.ib(default=False)
+    pip_pre = attr.ib(default=False)
+    skip_pipenv = attr.ib(default=False)
+    pipenv_install_opts = attr.ib(default=None)
+    pipenv_install_cmd = attr.ib(default=None)
+
+    @envdir.default
+    def _envdir_default(self):
+        envdir = self._tmpdir / "dot-tox" / self.envname
+        envdir.ensure(dir=True)
+        return envdir
 
 
+@attr.s
 class MockSession(object):
-    def __init__(self, tmpdir):
-        self.config = MockConfig(tmpdir)
+    _tmpdir = attr.ib()
+    config = attr.ib()
+
+    @config.default
+    def _config(self):
+        return MockConfig(self._tmpdir)
 
     def make_emptydir(self, path):
         return True
 
 
+@attr.s
 class MockVenv(object):
-    def __init__(self, tmpdir, *args, **kwargs):
-        self.tmpdir = tmpdir
-        self.session = MockSession(tmpdir)
-        self.envconfig = MockEnvironmentConfig(tmpdir, config=self.session.config)
-        self.deps = []
-        self._pipfile = None
-        self._pipfile_lock = None
+    _tmpdir = attr.ib()
+    session = attr.ib()
+    envconfig = attr.ib()
+    deps = attr.ib(factory=list)
+    _pipfile = attr.ib(default=None)
+    _pipfile_lock = attr.ib(default=None)
+
+    @session.default
+    def _session_default(self):
+        return MockSession(self._tmpdir)
+
+    @envconfig.default
+    def _envconfig_default(self):
+        return MockEnvironmentConfig(self._tmpdir, config=self.session.config)
 
     @property
     def path(self):
@@ -68,10 +93,10 @@ class MockVenv(object):
         return self.deps
 
 
+@attr.s
 class MockAction(object):
-    def __init__(self, venv=None):
-        self.venv = venv
-        self.activities = []
+    venv = attr.ib()
+    activities = attr.ib(factory=list)
 
     def setactivity(self, *args, **kwargs):
         self.activities.append(args)
