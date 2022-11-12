@@ -160,7 +160,7 @@ def test_end_to_end(
         command.append("--pipenv-update")
 
     result = pytester.run(*command)
-    if pass_pipenv_update and not use_Pipfile:
+    if pass_pipenv_update and not use_Pipfile and not pipenv_install_cmd:
         # can't lock without a Pipfile
         assert result.ret != 0
         return
@@ -175,14 +175,16 @@ def test_end_to_end(
         exp_install_cmd = [pipenv_install_cmd]
     elif pass_pipenv_update:
         exp_install_cmd = ["update"]
-    elif use_Pipfile_lock_env:
-        exp_install_cmd = ["sync"]
     else:
         exp_install_cmd = ["install"]
     if pipenv_install_opts:
         exp_install_cmd.extend(shlex.split(pipenv_install_opts))
+    if use_Pipfile_lock_env and not pass_pipenv_update and not pipenv_install_cmd:
+        exp_install_cmd.append("--ignore-pipfile")
+    if pip_pre and not pipenv_install_cmd:
+        exp_install_cmd.append("--pre")
     exp_path = pytester.path / ".tox" / "py" / "Pipfile"
-    if "sync" in exp_install_cmd:
+    if "--ignore-pipfile" in exp_install_cmd:
         exp_path = str(exp_path) + ".lock"
     if pipenv_install_cmd and not use_Pipfile:
         # overriding the install command allows use w/o Pipfile
@@ -193,9 +195,8 @@ def test_end_to_end(
                 "py pipenv: <{} {}>".format(exp_install_cmd, exp_path),
             ]
         )
-        if (use_Pipfile and exp_install_cmd[0] == "install") or (
-            (pass_pipenv_update or use_Pipfile_lock_env)
-            and exp_install_cmd[0] == "sync"
+        if (use_Pipfile and exp_install_cmd[0] in ("install", "update")) or (
+            use_Pipfile_lock_env and "--ignore-pipfile" in exp_install_cmd
         ):
             result.stdout.fnmatch_lines(["iterlist==0.4"])
     else:

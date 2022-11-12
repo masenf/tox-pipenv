@@ -1,3 +1,4 @@
+import shlex
 import subprocess
 import sys
 
@@ -44,8 +45,8 @@ def test_install_deps(
         assert result is True
         if has_pipenv_update:
             exp_cmd = "update"
-        elif has_pipfile_lock or has_pipenv_update:
-            exp_cmd = "sync"
+        elif has_pipfile_lock:
+            exp_args.append("--ignore-pipfile")
         if has_pip_pre:
             exp_args.append("--pre")
     else:

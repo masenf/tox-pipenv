@@ -272,6 +272,7 @@ def _install_args(venv):
         venv.envconfig.pipenv_install_cmd,
     )
     if install_cmd is None:
+        install_cmd = "install"
         g_config = venv.envconfig.config
         if g_config.option.pipenv_update:
             install_cmd = "update"
@@ -284,11 +285,10 @@ def _install_args(venv):
                         g_config.toxinidir,
                     )
                 )
-        elif pipfile_lock_path is None:
-            install_cmd = "install"
-        else:
-            # the project provides a lockfile for this environment, so sync to it
-            install_cmd = "sync"
+        elif pipfile_lock_path is not None:
+            # the project provides a lockfile for this environment, so install
+            # from the lockfile by ignoring the Pipfile
+            args.append("--ignore-pipfile")
         if venv.envconfig.pip_pre:
             args.append("--pre")
     return [install_cmd] + args
@@ -310,7 +310,7 @@ def tox_testenv_install_deps(venv, action):
         "pipenv",
         "<{} {}>".format(
             install_args,
-            pipfile_lock_path if "sync" in install_args else pipfile_path,
+            pipfile_lock_path if "--ignore-pipfile" in install_args else pipfile_path,
         ),
     )
     _pipenv_command(
