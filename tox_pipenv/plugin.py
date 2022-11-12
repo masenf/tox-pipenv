@@ -1,8 +1,8 @@
 """
-Use `pipenv` to install or sync dependencies.
+Use `pipenv` to install dependencies.
 
-Tox plugin overrides `install_deps` action to either install or sync
-dependencies from a `Pipfile` into the current test environment.
+Tox plugin overrides `install_deps` action to install dependencies
+from a `Pipfile` into the current test environment.
 """
 import shlex
 import sys
@@ -20,7 +20,6 @@ DEFAULT_PIPENV_ENV = {
 }
 DEFAULT_PIPENV_INSTALL_OPTS = tuple()
 ENV_PIPENV_INSTALL_OPTS = "TOX_PIPENV_INSTALL_OPTS"
-ENV_PIPENV_INSTALL_CMD = "TOX_PIPENV_INSTALL_CMD"
 ENV_PIPENV_PIPFILE = "PIPENV_PIPFILE"
 PIPFILE_PARENT = PIPFILE = PIPFILE_LOCK = PIPFILE_LOCK_ENV = None
 
@@ -196,15 +195,6 @@ def tox_addoption(parser):
         ),
     )
     parser.add_testenv_attribute(
-        "pipenv_install_cmd",
-        type="string",
-        default=None,
-        help=(
-            "Override the `install`, `sync`, or `update` command executed during "
-            "installdeps. (var {})".format(ENV_PIPENV_INSTALL_CMD)
-        ),
-    )
-    parser.add_testenv_attribute(
         "pipenv_install_opts",
         type="string",
         default=None,
@@ -253,6 +243,7 @@ def _install_args(venv):
 
     If no user supplied args are available, return None.
     """
+    g_config = venv.envconfig.config
     pipfile_path, pipfile_lock_path = _venv_pipfile(venv)
     if pipfile_path is None:
         # we need an actual Pipfile, even if its empty
@@ -265,32 +256,37 @@ def _install_args(venv):
     )
     if args_str:
         args = list(shlex.split(args_str))
+        install_cmd, args = args[0], args[1:]
     else:
-        args = list(DEFAULT_PIPENV_INSTALL_OPTS)
-    install_cmd = os.environ.get(
-        ENV_PIPENV_INSTALL_CMD,
-        venv.envconfig.pipenv_install_cmd,
-    )
+        install_cmd, args = None, list(DEFAULT_PIPENV_INSTALL_OPTS)
+
     if install_cmd is None:
         install_cmd = "install"
-        g_config = venv.envconfig.config
         if g_config.option.pipenv_update:
             install_cmd = "update"
-            toxinidir_pipfile_path, _ = _toxinidir_pipfile(venv)
-            if toxinidir_pipfile_path is None:
-                raise ToxPipenvError(
-                    "Unable to update for {}, no {} was found in {}".format(
-                        venv.envconfig.envname,
-                        PIPFILE,
-                        g_config.toxinidir,
-                    )
-                )
         elif pipfile_lock_path is not None:
             # the project provides a lockfile for this environment, so install
             # from the lockfile by ignoring the Pipfile
             args.append("--ignore-pipfile")
         if venv.envconfig.pip_pre:
             args.append("--pre")
+
+    # make sure update is possible
+    if install_cmd == "update":
+        toxinidir_pipfile_path, _ = _toxinidir_pipfile(venv)
+        if toxinidir_pipfile_path is None:
+            raise ToxPipenvError(
+                "Unable to update for {}, no {} was found in {}".format(
+                    venv.envconfig.envname,
+                    PIPFILE,
+                    g_config.toxinidir,
+                )
+            )
+    elif g_config.option.pipenv_update:
+        raise ToxPipenvError(
+            "--pipenv-update cannot be specified with pipenv_install_opts "
+            "({})".format(args_str)
+        )
     return [install_cmd] + args
 
 

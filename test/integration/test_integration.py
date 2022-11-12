@@ -120,8 +120,8 @@ def pass_pipenv_update(request):
 
 
 @pytest.fixture(
-    params=["--dev", "--dev --pre", None],
-    ids=["['--dev']", "['--dev', '--pre']", "[]"],
+    params=["install --dev", "update --pre", None],
+    ids=["['install', '--dev']", "['update', '--pre']", "[]"],
 )
 def pipenv_install_opts(request, monkeypatch):
     if request.param:
@@ -129,11 +129,43 @@ def pipenv_install_opts(request, monkeypatch):
     return request.param
 
 
-@pytest.fixture(params=["install", "update", None])
-def pipenv_install_cmd(request, monkeypatch):
-    if request.param:
-        monkeypatch.setenv("TOX_PIPENV_INSTALL_CMD", request.param)
-    return request.param
+def _expect_tox_to_fail(
+    pass_pipenv_update,
+    pipenv_install_opts,
+    use_Pipfile,
+    use_Pipfile_lock_env,
+):
+    """
+    Return True if we expect tox to fail under the given circumstances.
+
+    An attempt to express these complicated combinations in ways that
+    might make sense to future maintainers.
+    """
+    # condition raised early in tox_testenv_install_deps near _should_skip
+    want_update_but_will_raise = (
+        pass_pipenv_update and not use_Pipfile and not use_Pipfile_lock_env
+    )
+    # will hit this in plugin._install_args if _should_skip lets us through
+    custom_update_but_no_pipfile = (
+        pipenv_install_opts
+        and "update" in pipenv_install_opts
+        and not use_Pipfile
+        and use_Pipfile_lock_env
+    )
+    # condition raised in plugin._install_args
+    want_update_but_no_pipfile = pass_pipenv_update and not use_Pipfile
+    # condition raised at the bottom of plugin._install_args
+    non_update_custom_mixed_with_update_arg = (
+        pass_pipenv_update
+        and pipenv_install_opts
+        and "update" not in pipenv_install_opts
+    )
+    return (
+        want_update_but_will_raise
+        or custom_update_but_no_pipfile
+        or want_update_but_no_pipfile
+        or non_update_custom_mixed_with_update_arg
+    )
 
 
 @pytest.mark.parametrize(
@@ -144,7 +176,6 @@ def test_end_to_end(
     use_Pipfile,
     use_Pipfile_lock_env,
     pass_pipenv_update,
-    pipenv_install_cmd,
     pipenv_install_opts,
     pip_pre,
 ):
@@ -158,10 +189,14 @@ def test_end_to_end(
         assert not (pytester.path / "Pipfile.lock.py").exists()
     if pass_pipenv_update:
         command.append("--pipenv-update")
-
     result = pytester.run(*command)
-    if pass_pipenv_update and not use_Pipfile and not pipenv_install_cmd:
-        # can't lock without a Pipfile
+
+    if _expect_tox_to_fail(
+        pass_pipenv_update=pass_pipenv_update,
+        pipenv_install_opts=pipenv_install_opts,
+        use_Pipfile=use_Pipfile,
+        use_Pipfile_lock_env=use_Pipfile_lock_env,
+    ):
         assert result.ret != 0
         return
     assert result.ret == 0
@@ -171,22 +206,20 @@ def test_end_to_end(
             "py run-test: commands[0] | pip freeze",
         ]
     )
-    if pipenv_install_cmd:
-        exp_install_cmd = [pipenv_install_cmd]
+    if pipenv_install_opts:
+        exp_install_cmd = list(shlex.split(pipenv_install_opts))
     elif pass_pipenv_update:
         exp_install_cmd = ["update"]
     else:
         exp_install_cmd = ["install"]
-    if pipenv_install_opts:
-        exp_install_cmd.extend(shlex.split(pipenv_install_opts))
-    if use_Pipfile_lock_env and not pass_pipenv_update and not pipenv_install_cmd:
+    if use_Pipfile_lock_env and not pass_pipenv_update and not pipenv_install_opts:
         exp_install_cmd.append("--ignore-pipfile")
-    if pip_pre and not pipenv_install_cmd:
+    if pip_pre and not pipenv_install_opts:
         exp_install_cmd.append("--pre")
     exp_path = pytester.path / ".tox" / "py" / "Pipfile"
     if "--ignore-pipfile" in exp_install_cmd:
         exp_path = str(exp_path) + ".lock"
-    if pipenv_install_cmd and not use_Pipfile:
+    if pipenv_install_opts and not use_Pipfile:
         # overriding the install command allows use w/o Pipfile
         exp_path = None
     if pass_pipenv_update or use_Pipfile or use_Pipfile_lock_env:

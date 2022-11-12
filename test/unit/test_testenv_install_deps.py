@@ -36,8 +36,7 @@ def test_install_deps(
         with pytest.raises(tox_pipenv.plugin.ToxPipenvError):
             _ = tox_testenv_install_deps(venv, action)
         return
-    else:
-        result = tox_testenv_install_deps(venv, action)
+    result = tox_testenv_install_deps(venv, action)
 
     exp_cmd = "install"
     exp_args = []
@@ -110,34 +109,44 @@ def test_pipfile_non_venv_lock(venv, mocker, action, lock_file_name):
         "environ",
     ),
 )
-def test_install_override(venv, mocker, action, touch_file_name, set_where):
+@pytest.mark.parametrize(
+    "opts",
+    (
+        "install --deploy -v",
+        "update --pre",
+    ),
+)
+def test_install_override(
+    venv, mocker, action, touch_file_name, set_where, opts, has_pipenv_update
+):
     """
     Check that overrides are respected regardless of lock file state.
     """
     if touch_file_name is not None:
         (venv.session.config.toxinidir / touch_file_name).ensure()
-    cmd = "foo"
-    opts = "--deploy -v"
-    opts_shlex = ["--deploy", "-v"]
+    opts_shlex = shlex.split(opts)
     if set_where == "environ":
-        mocker.patch.dict(
-            "os.environ",
-            {"TOX_PIPENV_INSTALL_CMD": cmd},
-        )
         mocker.patch.dict(
             "os.environ",
             {"TOX_PIPENV_INSTALL_OPTS": opts},
         )
     else:
-        venv.envconfig.pipenv_install_cmd = cmd
         venv.envconfig.pipenv_install_opts = opts
     mocker.patch("subprocess.Popen")
     exp_command = [
         sys.executable,
         "-m",
         "pipenv",
-        cmd,
     ] + opts_shlex
+
+    pipenv_update_non_update_custom = has_pipenv_update and "update" not in opts_shlex
+    update_and_no_pipfile = (
+        has_pipenv_update or "update" in opts_shlex
+    ) and ".lock" in touch_file_name
+    if pipenv_update_non_update_custom or update_and_no_pipfile:
+        with pytest.raises(tox_pipenv.plugin.ToxPipenvError):
+            _ = tox_testenv_install_deps(venv, action)
+        return
     result = tox_testenv_install_deps(venv, action)
     assert result is True
     assert subprocess.Popen.call_count == 1
