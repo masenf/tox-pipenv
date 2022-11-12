@@ -71,29 +71,18 @@ _bool_. Specified per `[testenv]` section.
 
 If true, this plugin will not take any action in the environment.
 
-## `pipenv_install_cmd`
+## `pipenv_install_opts`
 
 _string_. Specified per `[testenv]` section.
 
-Override the sub-command passed to `pipenv` during the `install_deps` stage.
-
-By default, the plugin will use `sync` when a lockfile is present and `install`
-otherwise.
-
-### `TOX_PIPENV_INSTALL_CMD`
-
-_string_. Environment Variable.
-
-Global override for `pipenv_install_cmd` will apply to all environments.
-
-## `pipenv_install_opts`
-
-_argv_. Specified per `[testenv]` section.
-
 Override the args passed to `pipenv` during the `install_deps` stage.
 
-By default, the plugin will use `--dev` to install all dependencies specified
-in the `Pipfile`.
+By default, the plugin will use `install --ignore-pipfile` if a `Pipfile.lock.{envname}` file is present
+and `install` when only a `Pipfile` is available.
+
+If this option is specified, the plugin will not modify or augment the argument list,
+however if `--pipenv-update` is specified and `update` is not present in the opts, an
+exception is raised.
 
 ### `TOX_PIPENV_INSTALL_OPTS`
 
