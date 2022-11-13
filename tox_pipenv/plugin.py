@@ -198,6 +198,9 @@ def _expand_install_command(command, packages, options):
         else:
             yield val
 
+    if command[0] == "python":
+        # expand "python" to the tox python, not the env python
+        command = list(itertools.chain([sys.executable], command[1:]))
     return list(itertools.chain.from_iterable(_expand_item(val) for val in command))
 
 

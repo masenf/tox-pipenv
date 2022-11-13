@@ -80,6 +80,8 @@ def test_end_to_end(
         if "pipenv" not in install_command:
             result.stdout.fnmatch_lines(["py pipenv: <disabled *"])
             return
+        if install_command.startswith("python"):
+            install_command = install_command.replace("python", sys.executable)
         exp_install_cmd = list(
             shlex.split(install_command.format(opts="", packages=""))
         )
