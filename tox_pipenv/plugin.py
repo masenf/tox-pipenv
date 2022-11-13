@@ -35,11 +35,11 @@ def _init_global_pipfile(pipenv_pipfile_str):
     if pipenv_pipfile_str is not None:
         pipenv_pipfile = py.path.local(pipenv_pipfile_str)
         PIPFILE_PARENT = pipenv_pipfile.parts()[-2]
-        PIPFILE = PIPFILE_FALLBACK = pipenv_pipfile.basename
+        PIPFILE_FALLBACK = pipenv_pipfile.basename
     else:
         PIPFILE_PARENT = None
         PIPFILE_FALLBACK = "Pipfile"
-        PIPFILE = PIPFILE_FALLBACK + "_{envname}"
+    PIPFILE = PIPFILE_FALLBACK + "_{envname}"
     PIPFILE_LOCK = PIPFILE_FALLBACK + ".lock"
     PIPFILE_LOCK_ENV = PIPFILE + ".lock"
 
@@ -53,11 +53,25 @@ _init_global_pipfile_from_env_var()
 
 def _try_pipfile_names(venv):
     """Iterate possible Pipfile names for the current venv."""
-    yield PIPFILE.format(envname=venv.envconfig.envname)
-    yield PIPFILE_FALLBACK
+    seen_names = set()
+    for name in (PIPFILE, PIPFILE_FALLBACK):
+        fmt_name = name.format(envname=venv.envconfig.envname)
+        if fmt_name not in seen_names:
+            seen_names.add(fmt_name)
+            yield fmt_name
 
 
-def _pipfile_if_exists(venv, in_path=None, lock_file_fmt=None):
+def _try_pipfile_lock_names(venv):
+    """Iterate possible Pipfile.lock names for the current venv."""
+    pipfile_lock_name = PIPFILE_LOCK_ENV.format(envname=venv.envconfig.envname)
+    yield pipfile_lock_name
+    if PIPFILE_PARENT and pipfile_lock_name != PIPFILE_LOCK:
+        # special case, the user provided PIPENV_PIPFILE, so allow Pipfile.lock
+        # to be used, even though it doesn't have the env tag
+        yield PIPFILE_LOCK
+
+
+def _pipfile_if_exists(venv, in_path=None, lock_files=None):
     """
     Get Pipfile and Pipfile.lock paths for the given venv under in_path.
 
@@ -70,19 +84,23 @@ def _pipfile_if_exists(venv, in_path=None, lock_file_fmt=None):
     """
     if in_path is None:
         in_path = venv.path
-    if lock_file_fmt is None:
-        lock_file_fmt = PIPFILE_LOCK
-    pipfile_lock_path = in_path.join(
-        lock_file_fmt.format(envname=venv.envconfig.envname),
-    )
+    if lock_files is None:
+        lock_files = [PIPFILE_LOCK]
+    pipfile_path = pipfile_lock_path = None
     for pipfile_name in _try_pipfile_names(venv):
         pipfile_path = in_path.join(pipfile_name)
         if not pipfile_path.exists():
             pipfile_path = None
         else:
             break
-    if not pipfile_lock_path.exists():
-        pipfile_lock_path = None
+    for pipfile_lock_name in lock_files:
+        pipfile_lock_path = in_path.join(
+            pipfile_lock_name.format(envname=venv.envconfig.envname),
+        )
+        if not pipfile_lock_path.exists():
+            pipfile_lock_path = None
+        else:
+            break
     return pipfile_path, pipfile_lock_path
 
 
@@ -99,7 +117,7 @@ def _toxinidir_pipfile(venv):
     return _pipfile_if_exists(
         venv,
         in_path=PIPFILE_PARENT or config.toxinidir,
-        lock_file_fmt=PIPFILE_LOCK_ENV,
+        lock_files=_try_pipfile_lock_names(venv),
     )
 
 
