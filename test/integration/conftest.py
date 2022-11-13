@@ -1,6 +1,11 @@
 import pytest
 
-from .data import PIPFILE_SIMPLE, PIPFILE_SIMPLE_LOCK
+from .data import (
+    PIPFILE_SIMPLE,
+    PIPFILE_SIMPLE_LOCK,
+    TOX_INI_PIPFILE_SIMPLE,
+    TOX_INI_PIPFILE_INSTALL_COMMAND,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -36,11 +41,35 @@ def pass_pipenv_update(request):
     return request.param
 
 
+@pytest.fixture
+def tox_ini(pytester):
+    return pytester.makefile(".ini", tox=TOX_INI_PIPFILE_SIMPLE)
+
+
 @pytest.fixture(
-    params=["install --dev", "update --pre", None],
-    ids=["['install', '--dev']", "['update', '--pre']", "[]"],
+    params=[
+        "pipenv install --dev {opts} {packages}",
+        "pipenv update --pre {packages}",
+        # XXX: can't use this because `python` is the venv python, not the tox python
+        # "python -m pipenv update --pre {packages}",
+        "echo {opts} {packages}",
+        None,
+    ],
+    ids=["['install', '--dev']", "['update', '--pre']", "[echo]", "[]"],
 )
-def pipenv_install_opts(request, monkeypatch):
+def install_command(request, pytester, tox_ini):
+    if request.param is not None:
+        pytester.makefile(
+            ".ini",
+            tox=TOX_INI_PIPFILE_INSTALL_COMMAND.format(install_command=request.param),
+        )
+    return request.param
+
+
+@pytest.fixture(params=[True, False], ids=["pip_pre=True", "pip_pre=False"])
+def pip_pre(request, pytester, tox_ini, install_command):
     if request.param:
-        monkeypatch.setenv("TOX_PIPENV_INSTALL_OPTS", request.param)
+        tox_ini_content = tox_ini.read_text()
+        tox_ini_content += "\npip_pre = true"
+        pytester.makefile(".ini", tox=tox_ini_content)
     return request.param

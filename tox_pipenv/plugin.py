@@ -4,12 +4,14 @@ Use `pipenv` to install dependencies.
 Tox plugin overrides `install_deps` action to install dependencies
 from a `Pipfile` into the current test environment.
 """
+import itertools
 import shlex
 import sys
 import os
 
 import py.path
 from tox import hookimpl
+from tox.config import InstallcmdOption
 
 
 DEFAULT_PIPENV_ENV = {
@@ -18,8 +20,6 @@ DEFAULT_PIPENV_ENV = {
     "PIPENV_VERBOSITY": "-1",  # suppress existing venv warning
     "PIPENV_NOSPIN": "1",  # suppress terminal animations
 }
-DEFAULT_PIPENV_INSTALL_OPTS = tuple()
-ENV_PIPENV_INSTALL_OPTS = "TOX_PIPENV_INSTALL_OPTS"
 ENV_PIPENV_PIPFILE = "PIPENV_PIPFILE"
 PIPFILE_PARENT = PIPFILE = PIPFILE_FALLBACK = PIPFILE_LOCK = PIPFILE_LOCK_ENV = None
 
@@ -165,24 +165,27 @@ def _pipenv_env(venv, pipfile_path=None):
     return env
 
 
-def _pipenv_command(venv, args, action, **kwargs):
-    """
-    Execute `pipenv` in the given venv.
+def _pipenv_command_line(*args):
+    return [sys.executable, "-m", "pipenv"] + list(args)
 
-    Additional kwargs are passed to venv._pcall.
 
-    If kwarg "env" is specified, it will be combined with and override the
-    os.environ and default _pipenv_env values.
-    """
-    env = _pipenv_env(venv)
-    kwarg_env = kwargs.pop("env", {})
-    env.update(kwarg_env)
-    return venv._pcall(
-        [sys.executable, "-m", "pipenv"] + list(args),
-        cwd=kwargs.pop("cwd", _basepath(venv)),
-        action=action,
-        env=env,
-    )
+def _expand_install_command(command, packages, options):
+    def _expand_item(val):
+        # expand an install command
+        if val == "{packages}":
+            for package in packages:
+                yield package
+        elif val == "{opts}":
+            for opt in options:
+                yield opt
+        else:
+            yield val
+
+    return list(itertools.chain.from_iterable(_expand_item(val) for val in command))
+
+
+def _has_default_install_command(venv):
+    return venv.envconfig.install_command == shlex.split(InstallcmdOption.default)
 
 
 @hookimpl
@@ -204,23 +207,19 @@ def tox_addoption(parser):
             "that uses Pipfile."
         ),
     )
-    parser.add_testenv_attribute(
-        "pipenv_install_opts",
-        type="string",
-        default=None,
-        help=(
-            "Override the opts passed to the install command. "
-            "(default: {}) (var: {})".format(
-                DEFAULT_PIPENV_INSTALL_OPTS,
-                ENV_PIPENV_INSTALL_OPTS,
-            )
-        ),
-    )
 
 
 @hookimpl
 def tox_configure(config):
     _init_global_pipfile_from_env_var()
+
+
+def _deps(venv):
+    try:
+        return venv.get_resolved_dependencies()
+    except AttributeError:  # pragma: no cover
+        # _getresolvedeps was deprecated on tox 3.7.0 in favor of get_resolved_dependencies
+        return venv._getresolvedeps()
 
 
 def _should_skip(venv):
@@ -230,6 +229,21 @@ def _should_skip(venv):
             venv.envconfig.envname,
             venv.envconfig.skip_pipenv,
         )
+    if not _has_default_install_command(venv):
+        install_command = venv.envconfig.install_command
+        if "pipenv" not in install_command:
+            return "custom 'install_command' {!r} doesn't contain `pipenv`".format(
+                install_command,
+            )
+        return  # pipfile checks are ignored if a custom install_command is given
+    else:
+        deps = _deps(venv)
+        if deps:
+            # this plugin only operates in the absense of testenv deps
+            return (
+                "environment {!r} has `deps = {}`, and does not "
+                "define an install_command".format(venv.envconfig.envname, deps)
+            )
     pipfile_path, pipfile_lock_path = _toxinidir_pipfile(venv)
     if pipfile_path is None and pipfile_lock_path is None:
         # this plugin only operates when Pipfile is present
@@ -237,52 +251,23 @@ def _should_skip(venv):
             PIPFILE_LOCK_ENV.format(envname=venv.envconfig.envname),
         ]
         return "none of {!r} are present.".format(tried_files)
-    try:
-        deps = venv.get_resolved_dependencies()
-    except AttributeError:  # pragma: no cover
-        # _getresolvedeps was deprecated on tox 3.7.0 in favor of get_resolved_dependencies
-        deps = venv._getresolvedeps()
-    if deps:
-        # this plugin only operates in the absense of testenv deps
-        return "environment {!r} has `deps = ...`".format(venv.envconfig.envname)
 
 
-def _install_args(venv):
+def _install_command(venv):
     """
-    Get the args passed `pipenv` for install_deps.
-
-    If no user supplied args are available, return None.
+    Get the install command (using `pipenv`) for install_deps.
     """
+    if not _has_default_install_command(venv):
+        # don't override the user's install_command
+        return venv.envconfig.install_command, []
+
     g_config = venv.envconfig.config
     pipfile_path, pipfile_lock_path = _venv_pipfile(venv)
-    if pipfile_path is None:
-        # we need an actual Pipfile, even if its empty
-        pipfile_path = pipfile_lock_path.parts()[-2] / PIPFILE_FALLBACK
-        pipfile_path.ensure()
 
-    args_str = os.environ.get(
-        ENV_PIPENV_INSTALL_OPTS,
-        venv.envconfig.pipenv_install_opts,
-    )
-    if args_str:
-        args = list(shlex.split(args_str))
-        install_cmd, args = args[0], args[1:]
-    else:
-        install_cmd, args = None, list(DEFAULT_PIPENV_INSTALL_OPTS)
-
-    if install_cmd is None:
-        install_cmd = "install"
-        if g_config.option.pipenv_update:
-            install_cmd = "update"
-        elif pipfile_lock_path is not None:
-            # the project provides a lockfile for this environment, so install
-            # from the lockfile by ignoring the Pipfile
-            args.append("--ignore-pipfile")
-        if venv.envconfig.pip_pre:
-            args.append("--pre")
-
-    # make sure update is possible
-    if install_cmd == "update":
+    install_cmd = "install"
+    opts = []
+    if g_config.option.pipenv_update:
+        install_cmd = "update"
         toxinidir_pipfile_path, _ = _toxinidir_pipfile(venv)
         if toxinidir_pipfile_path is None:
             raise ToxPipenvError(
@@ -292,12 +277,11 @@ def _install_args(venv):
                     g_config.toxinidir,
                 )
             )
-    elif g_config.option.pipenv_update:
-        raise ToxPipenvError(
-            "--pipenv-update cannot be specified with pipenv_install_opts "
-            "({})".format(args_str)
-        )
-    return [install_cmd] + args
+    elif pipfile_lock_path is not None:
+        # the project provides a lockfile for this environment, so install
+        # from the lockfile by ignoring the Pipfile
+        opts.append("--ignore-pipfile")
+    return _pipenv_command_line(install_cmd, "{opts}", "{packages}"), opts
 
 
 @hookimpl
@@ -309,31 +293,52 @@ def tox_testenv_install_deps(venv, action):
             raise ToxPipenvError(
                 "--pipenv-update is specified, but {}".format(skip_reason)
             )
+        action.setactivity("pipenv", "<disabled {!r}>".format(skip_reason))
         return
     pipfile_path, pipfile_lock_path = _clone_pipfile(venv)
-    install_args = _install_args(venv)
+    if pipfile_path is None:
+        # we need an actual Pipfile, even if its empty
+        if pipfile_lock_path is not None:
+            pipfile_path = pipfile_lock_path.parts()[-2] / PIPFILE_FALLBACK
+        else:
+            pipfile_path = venv.path / PIPFILE_FALLBACK
+        pipfile_path.ensure()
+    install_command, opts = _install_command(venv)
+    if venv.envconfig.pip_pre:
+        opts.append("--pre")
+    expanded_command = _expand_install_command(
+        install_command,
+        packages=_deps(venv),
+        options=opts,
+    )
     action.setactivity(
         "pipenv",
         "<{} {}>".format(
-            install_args,
-            pipfile_lock_path if "--ignore-pipfile" in install_args else pipfile_path,
+            expanded_command,
+            pipfile_lock_path
+            if "--ignore-pipfile" in expanded_command
+            else pipfile_path,
         ),
     )
-    _pipenv_command(
-        venv,
-        args=install_args,
+    # XXX: for custom install_command, but not sure if this is what we want...
+    venv.envconfig.allowlist_externals.append("pipenv")
+    venv._pcall(
+        expanded_command,
+        cwd=_basepath(venv),
         action=action,
+        env=_pipenv_env(venv),
     )
     if g_config.option.pipenv_update:
         # copy the lock file back to project dir to be committed
         _, pipfile_lock_path = _venv_pipfile(venv)
         project_dir = PIPFILE_PARENT or g_config.toxinidir
-        pipfile_lock_path.copy(
-            project_dir
-            / PIPFILE_LOCK_ENV.format(
-                envname=venv.envconfig.envname,
-            ),
-        )
+        if pipfile_lock_path:
+            pipfile_lock_path.copy(
+                project_dir
+                / PIPFILE_LOCK_ENV.format(
+                    envname=venv.envconfig.envname,
+                ),
+            )
     # Return True to stop further plugins from installing deps
     return True
 
@@ -343,5 +348,9 @@ def tox_runenvreport(venv, action):
     if _should_skip(venv):
         return
     action.setactivity("runenvreport", "")
-    output = _pipenv_command(venv, args=["graph"], action=action).splitlines()
-    return output
+    return venv._pcall(
+        _pipenv_command_line("graph"),
+        cwd=_basepath(venv),
+        action=action,
+        env=_pipenv_env(venv),
+    ).splitlines()

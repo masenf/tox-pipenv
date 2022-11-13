@@ -34,8 +34,8 @@ class MockEnvironmentConfig(object):
     sitepackages = attr.ib(default=False)
     pip_pre = attr.ib(default=False)
     skip_pipenv = attr.ib(default=False)
-    pipenv_install_opts = attr.ib(default=None)
-    pipenv_install_cmd = attr.ib(default=None)
+    install_command = attr.ib(factory=list)
+    allowlist_externals = attr.ib(factory=list)
 
     @envdir.default
     def _envdir_default(self):
@@ -146,13 +146,15 @@ def has_pipenv_update(request, mocker, venv, action):
     if request.param:
         mock_lock_data = str(uuid.uuid4())
 
-        _pipenv_command = tox_pipenv.plugin._pipenv_command
+        _pipenv_command_line = tox_pipenv.plugin._pipenv_command_line
 
         def _make_lock_file(*args, **kwargs):
             (venv.path / tox_pipenv.plugin.PIPFILE_LOCK).write(mock_lock_data)
-            return _pipenv_command(*args, **kwargs)
+            return _pipenv_command_line(*args, **kwargs)
 
-        mocker.patch("tox_pipenv.plugin._pipenv_command", side_effect=_make_lock_file)
+        mocker.patch(
+            "tox_pipenv.plugin._pipenv_command_line", side_effect=_make_lock_file
+        )
         return mock_lock_data
     return False
 
@@ -171,3 +173,8 @@ def action(venv, actioncls):
 def mock_for_Popen(mocker):
     mocker.patch.dict("os.environ")
     mocker.patch("subprocess.Popen")
+
+
+@pytest.fixture
+def default_install_command(mocker):
+    mocker.patch("tox_pipenv.plugin._has_default_install_command", return_value=True)

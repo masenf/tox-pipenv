@@ -8,6 +8,7 @@ import tox_pipenv.plugin
 from tox_pipenv.plugin import tox_testenv_install_deps, _pipenv_env
 
 
+@pytest.mark.usefixtures("default_install_command")
 @pytest.mark.parametrize(
     "deps",
     (
@@ -98,60 +99,58 @@ def test_pipfile_non_venv_lock(venv, mocker, action, lock_file_name):
 @pytest.mark.parametrize(
     "touch_file_name",
     (
+        None,
         "Pipfile",
         "Pipfile_mock.lock",
     ),
 )
 @pytest.mark.parametrize(
-    "set_where",
+    "install_command",
     (
-        "venv",
-        "environ",
+        "pipenv install --deploy -v {opts} {packages}",
+        "python -m pipenv update {opts}",
+        "foo bar",
     ),
 )
 @pytest.mark.parametrize(
-    "opts",
+    "deps",
     (
-        "install --deploy -v",
-        "update --pre",
+        [],
+        ["foo"],
     ),
 )
 def test_install_override(
-    venv, mocker, action, touch_file_name, set_where, opts, has_pipenv_update
+    venv,
+    mocker,
+    action,
+    touch_file_name,
+    install_command,
+    deps,
+    has_pipenv_update,
 ):
     """
     Check that overrides are respected regardless of lock file state.
     """
     if touch_file_name is not None:
         (venv.session.config.toxinidir / touch_file_name).ensure()
-    opts_shlex = shlex.split(opts)
-    if set_where == "environ":
-        mocker.patch.dict(
-            "os.environ",
-            {"TOX_PIPENV_INSTALL_OPTS": opts},
-        )
-    else:
-        venv.envconfig.pipenv_install_opts = opts
+    install_command_shlex = shlex.split(install_command)
+    venv.envconfig.install_command = install_command_shlex
+    if deps:
+        mocker.patch("tox_pipenv.plugin._deps", return_value=deps)
     mocker.patch("subprocess.Popen")
-    exp_command = [
-        sys.executable,
-        "-m",
-        "pipenv",
-    ] + opts_shlex
-
-    pipenv_update_non_update_custom = has_pipenv_update and "update" not in opts_shlex
-    update_and_no_pipfile = (
-        has_pipenv_update or "update" in opts_shlex
-    ) and ".lock" in touch_file_name
-    if pipenv_update_non_update_custom or update_and_no_pipfile:
-        with pytest.raises(tox_pipenv.plugin.ToxPipenvError):
-            _ = tox_testenv_install_deps(venv, action)
-        return
+    if "pipenv" not in install_command_shlex:
+        if has_pipenv_update:
+            with pytest.raises(tox_pipenv.plugin.ToxPipenvError):
+                _ = tox_testenv_install_deps(venv, action)
+            return
     result = tox_testenv_install_deps(venv, action)
+    if "pipenv" not in install_command_shlex:
+        assert result is None
+        return
     assert result is True
     assert subprocess.Popen.call_count == 1
     subprocess.Popen.assert_called_once_with(
-        exp_command,
+        shlex.split(install_command.format(opts="", packages=" ".join(deps))),
         action=action,
         cwd=venv.path.dirpath(),
         env=_pipenv_env(venv),
