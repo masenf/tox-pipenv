@@ -12,6 +12,18 @@ TOX_INI_PIPFILE_SIMPLE = dedent(
 )
 
 
+TOX_INI_PIPFILE_INSTALL_COMMAND = dedent(
+    """
+    [tox]
+    skipsdist = True
+    envlist = py
+
+    [testenv]
+    install_command = {install_command}
+    commands = pip freeze""",
+)
+
+
 TOX_INI_DEPS_SIMPLE = dedent(
     """
     [tox]
