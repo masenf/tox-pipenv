@@ -12,11 +12,12 @@ import os
 import py.path
 from tox import hookimpl
 from tox.config import InstallcmdOption
+import tox.venv
 
 
 DEFAULT_PIPENV_ENV = {
     "PIPENV_YES": "1",  # Answer yes on recreation of virtual env
-    "PIPENV_VENV_IN_PROJECT": "1",  # don't use pew
+    "PIPENV_VENV_IN_PROJECT": "0",
     "PIPENV_VERBOSITY": "-1",  # suppress existing venv warning
     "PIPENV_NOSPIN": "1",  # suppress terminal animations
 }
@@ -140,6 +141,19 @@ def _clone_pipfile(venv):
     return venv_pipfile_path, venv_pipfile_lock_path
 
 
+def _ensure_pipfile(venv):
+    """Ensure that `pipfile_path` exists in venv, even if it's empty."""
+    pipfile_path, pipfile_lock_path = _clone_pipfile(venv)
+    if pipfile_path is None:
+        # we need an actual Pipfile, even if its empty
+        if pipfile_lock_path is not None:
+            pipfile_path = pipfile_lock_path.parts()[-2] / PIPFILE_FALLBACK
+        else:
+            pipfile_path = venv.path / PIPFILE_FALLBACK
+        pipfile_path.ensure()
+    return pipfile_path, pipfile_lock_path
+
+
 def _basepath(venv):
     """Get basepath for the venv and ensure it exists."""
     basepath = venv.path.dirpath()
@@ -162,6 +176,9 @@ def _pipenv_env(venv, pipfile_path=None):
     env.update(os.environ)
     env["VIRTUAL_ENV"] = str(venv.path)
     env["PIPENV_PIPFILE"] = str(pipfile_path)
+    # ensure we "create" the venv where tox would be expecting it
+    env["WORKON_HOME"] = str(venv.path.parts()[-2])
+    env["PIPENV_CUSTOM_VENV_NAME"] = str(venv.path.basename)
     return env
 
 
@@ -207,11 +224,67 @@ def tox_addoption(parser):
             "that uses Pipfile."
         ),
     )
+    parser.add_testenv_attribute(
+        "pipenv_venv",
+        type="bool",
+        default=True,
+        help="If true, use pipenv to create the virtual environment",
+    )
 
 
 @hookimpl
 def tox_configure(config):
     _init_global_pipfile_from_env_var()
+
+
+def _should_skip_create(venv):
+    """Return a reason why this plugin should NOT proceed."""
+    if venv.envconfig.skip_pipenv:
+        return "environment {!r} has `skip_pipenv = {}`".format(
+            venv.envconfig.envname,
+            venv.envconfig.skip_pipenv,
+        )
+    if not venv.envconfig.pipenv_venv:
+        return "environment {!r} has `pipenv_venv = {}`".format(
+            venv.envconfig.envname,
+            venv.envconfig.pipenv_venv,
+        )
+    pipfile_path, pipfile_lock_path = _toxinidir_pipfile(venv)
+    if pipfile_path is None and pipfile_lock_path is None:
+        # this plugin only operates when Pipfile is present
+        tried_files = list(_try_pipfile_names(venv)) + [
+            PIPFILE_LOCK_ENV.format(envname=venv.envconfig.envname),
+        ]
+        return "none of {!r} are present.".format(tried_files)
+
+
+@hookimpl
+def tox_testenv_create(venv, action):
+    skip_reason = _should_skip_create(venv)
+    if skip_reason:
+        action.setactivity("create pipenv", "<disabled {!r}>".format(skip_reason))
+        return
+    config_interpreter = venv.getsupportedinterpreter()
+    args = [sys.executable, "-m", "pipenv"]
+    if venv.envconfig.sitepackages:
+        args.append("--site-packages")
+
+    args.extend(["--python", str(config_interpreter)])
+
+    if hasattr(venv.envconfig, "make_emptydir"):
+        venv.envconfig.make_emptydir(venv.path)
+    else:
+        # tox 3.8.0 removed make_emptydir, See tox #1219
+        tox.venv.cleanup_for_venv(venv)
+
+    # Pipfile must exist in the venv directory
+    _ensure_pipfile(venv)
+    venv._pcall(
+        args, venv=False, action=action, cwd=_basepath(venv), env=_pipenv_env(venv)
+    )
+
+    # Return non-None to indicate the plugin has completed
+    return True
 
 
 def _deps(venv):
@@ -295,14 +368,7 @@ def tox_testenv_install_deps(venv, action):
             )
         action.setactivity("pipenv", "<disabled {!r}>".format(skip_reason))
         return
-    pipfile_path, pipfile_lock_path = _clone_pipfile(venv)
-    if pipfile_path is None:
-        # we need an actual Pipfile, even if its empty
-        if pipfile_lock_path is not None:
-            pipfile_path = pipfile_lock_path.parts()[-2] / PIPFILE_FALLBACK
-        else:
-            pipfile_path = venv.path / PIPFILE_FALLBACK
-        pipfile_path.ensure()
+    pipfile_path, pipfile_lock_path = _ensure_pipfile(venv)
     install_command, opts = _install_command(venv)
     if venv.envconfig.pip_pre:
         opts.append("--pre")
