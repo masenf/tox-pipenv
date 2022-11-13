@@ -11,6 +11,7 @@ from tox_pipenv.plugin import (
 )
 
 
+@pytest.mark.usefixtures("default_install_command")
 @pytest.mark.parametrize(
     "do_clone_pipfile",
     [True, False],

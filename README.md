@@ -71,25 +71,6 @@ _bool_. Specified per `[testenv]` section.
 
 If true, this plugin will not take any action in the environment.
 
-## `pipenv_install_opts`
-
-_string_. Specified per `[testenv]` section.
-
-Override the args passed to `pipenv` during the `install_deps` stage.
-
-By default, the plugin will use `install --ignore-pipfile` if a `Pipfile_{envname}.lock`
-file is present and `install` when only a `Pipfile` is available.
-
-If this option is specified, the plugin will not modify or augment the argument list,
-however if `--pipenv-update` is specified and `update` is not present in the opts, an
-exception is raised.
-
-### `TOX_PIPENV_INSTALL_OPTS`
-
-_string_. Environment Variable.
-
-Global override for `pipenv_install_opts` will apply to all environments.
-
 # Virtual Environments
 
 This plugin will use whatever virtualenv tox creates for the test environment,

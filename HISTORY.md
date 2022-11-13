@@ -10,9 +10,6 @@
   * Enable strict-pinning workflow with multiple python versions
   * New tox CLI option: `--pipenv-update` to explicitly (re)lock dependencies for multiple environments
 * testenv ini-setting, `skip_pipenv`: opt-out of all `pipenv` operations for the environment
-* Customize `pipenv` `install_deps` command:
-  * testenv ini-setting `pipenv_install_opts` / `TOX_PIPENV_INSTALL_OPTS`
-  * Environment variables take precedence over testenv ini-setting
 * Code restructuring for better modularity and readability
 * 100% unit and integration test coverage
 
