@@ -53,12 +53,9 @@ _init_global_pipfile_from_env_var()
 
 def _try_pipfile_names(venv):
     """Iterate possible Pipfile names for the current venv."""
-    seen_names = set()
     for name in (PIPFILE, PIPFILE_FALLBACK):
         fmt_name = name.format(envname=venv.envconfig.envname)
-        if fmt_name not in seen_names:
-            seen_names.add(fmt_name)
-            yield fmt_name
+        yield fmt_name
 
 
 def _try_pipfile_lock_names(venv):
