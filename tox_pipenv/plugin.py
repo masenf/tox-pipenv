@@ -289,11 +289,11 @@ def tox_testenv_create(venv, action):
 
     args.extend(["--python", str(config_interpreter)])
 
-    if hasattr(venv.envconfig, "make_emptydir"):
-        venv.envconfig.make_emptydir(venv.path)
-    else:
+    try:
         # tox 3.8.0 removed make_emptydir, See tox #1219
         tox.venv.cleanup_for_venv(venv)
+    except AttributeError:  # pragma: no cover
+        venv.envconfig.make_emptydir(venv.path)
 
     # Pipfile must exist in the venv directory
     _ensure_pipfile(venv)
