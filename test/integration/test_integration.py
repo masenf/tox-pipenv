@@ -1,3 +1,4 @@
+import glob
 import sys
 import shlex
 
@@ -100,7 +101,7 @@ def test_end_to_end(
     if pass_pipenv_update or use_pipfile or use_pipfile_lock_env:
         result.stdout.fnmatch_lines(
             [
-                "py pipenv: <{} {}>".format(exp_install_cmd, exp_path),
+                glob.escape(r"py pipenv: <{} {}>".format(exp_install_cmd, exp_path)),
             ]
         )
         if (use_pipfile and exp_install_cmd[0] in ("install", "update")) or (
@@ -162,8 +163,10 @@ def test_alt_pipfile(pytester, monkeypatch):
     exp_path = pytester.path / ".tox" / "py" / "Poopfile"
     result.stdout.fnmatch_lines(
         [
-            "py pipenv: <{} {}>".format(
-                [sys.executable, "-m", "pipenv", "install"], exp_path
+            glob.escape(
+                "py pipenv: <{} {}>".format(
+                    [sys.executable, "-m", "pipenv", "install"], exp_path
+                )
             ),
             "py run-test: commands[0] | pip freeze",
             "iterlist==0.4",
