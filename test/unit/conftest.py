@@ -34,6 +34,7 @@ class MockEnvironmentConfig(object):
     sitepackages = attr.ib(default=False)
     pip_pre = attr.ib(default=False)
     skip_pipenv = attr.ib(default=False)
+    pipenv_venv = attr.ib(default=True)
     install_command = attr.ib(factory=list)
     allowlist_externals = attr.ib(factory=list)
 
@@ -82,7 +83,7 @@ class MockVenv(object):
     def getsupportedinterpreter(self):
         return "test-python"
 
-    def _pcall(self, *args, **kwargs):
+    def _pcall(self, *args, venv=True, **kwargs):
         return subprocess.Popen(*args, **kwargs)
 
     def _getresolvedeps(self):
@@ -178,3 +179,15 @@ def mock_for_Popen(mocker):
 @pytest.fixture
 def default_install_command(mocker):
     mocker.patch("tox_pipenv.plugin._has_default_install_command", return_value=True)
+
+
+@pytest.fixture(params=[True, False], ids=["pipenv_venv=True", "pipenv_venv=False"])
+def pipenv_venv(request, venv):
+    venv.envconfig.pipenv_venv = request.param
+    return request.param
+
+
+@pytest.fixture(params=[True, False], ids=["sitepackages=True", "sitepackages=False"])
+def sitepackages(request, venv):
+    venv.envconfig.sitepackages = request.param
+    return request.param

@@ -49,9 +49,7 @@ def tox_ini(pytester):
 @pytest.fixture(
     params=[
         "pipenv install --dev {opts} {packages}",
-        "pipenv update --pre {packages}",
-        # XXX: can't use this because `python` is the venv python, not the tox python
-        # "python -m pipenv update --pre {packages}",
+        "python -m pipenv update --pre {packages}",
         "echo {opts} {packages}",
         None,
     ],

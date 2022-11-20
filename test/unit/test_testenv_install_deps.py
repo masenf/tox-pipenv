@@ -150,7 +150,11 @@ def test_install_override(
     assert result is True
     assert subprocess.Popen.call_count == 1
     subprocess.Popen.assert_called_once_with(
-        shlex.split(install_command.format(opts="", packages=" ".join(deps))),
+        shlex.split(
+            install_command.replace("python", sys.executable).format(
+                opts="", packages=" ".join(deps)
+            )
+        ),
         action=action,
         cwd=venv.path.dirpath(),
         env=_pipenv_env(venv),
